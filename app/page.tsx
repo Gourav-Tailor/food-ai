@@ -213,6 +213,35 @@ export default function ChatBotPage() {
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
 
+      {/* Input area with mic */}
+      <div className="border-t bg-white p-4 flex items-center space-x-2">
+        <input
+          type="text"
+          placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
+          value={userInput}
+          onChange={(e) => setUserInput(e.target.value)}
+          className="flex-1 border rounded-lg px-3 py-2"
+        />
+        <button
+          onClick={handleVoiceInput}
+          className={`px-3 py-2 rounded-lg ${isListening ? "bg-red-500 text-white" : "bg-gray-200"}`}
+        >
+          🎙️
+        </button>
+        <button
+          onClick={() => setShowMap(true)}
+          className="bg-gray-200 px-3 py-2 rounded-lg"
+        >
+          📍
+        </button>
+        <button
+          onClick={handleParse}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+        >
+          Send
+        </button>
+      </div>
+
       <div className="flex-1 p-6 space-y-4 overflow-y-auto">
         {/* Restaurant carousel */}
         {restaurants.length > 0 && (
@@ -277,35 +306,6 @@ export default function ChatBotPage() {
             </div>
           </div>
         )}
-      </div>
-
-      {/* Input area with mic */}
-      <div className="border-t bg-white p-4 flex items-center space-x-2">
-        <input
-          type="text"
-          placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          className="flex-1 border rounded-lg px-3 py-2"
-        />
-        <button
-          onClick={handleVoiceInput}
-          className={`px-3 py-2 rounded-lg ${isListening ? "bg-red-500 text-white" : "bg-gray-200"}`}
-        >
-          🎙️
-        </button>
-        <button
-          onClick={() => setShowMap(true)}
-          className="bg-gray-200 px-3 py-2 rounded-lg"
-        >
-          📍
-        </button>
-        <button
-          onClick={handleParse}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg"
-        >
-          Send
-        </button>
       </div>
 
       {/* Map Popup */}
