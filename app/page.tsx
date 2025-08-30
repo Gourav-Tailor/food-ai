@@ -10,7 +10,32 @@ import {
   Star,
   IndianRupee,
   Ruler,
-} from "lucide-react"; // lucide-react icons
+  HomeIcon,
+  Bike,
+} from "lucide-react";
+
+// ✅ shadcn/ui components
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import {
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  TabsContent,
+} from "@/components/ui/tabs";
+import {
+  Card,
+  CardHeader,
+  CardContent,
+  CardTitle,
+} from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+} from "@/components/ui/dialog";
 
 const containerStyle = {
   width: "100%",
@@ -18,7 +43,7 @@ const containerStyle = {
 };
 
 const defaultCenter = {
-  lat: 26.924179699327425, // Default to New Delhi
+  lat: 26.924179699327425,
   lng: 75.82699334517531,
 };
 
@@ -173,7 +198,7 @@ export default function ChatBotPage() {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`, // use env key
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
         },
         body: JSON.stringify({
           model: "llama-3.1-8b-instant",
@@ -208,193 +233,165 @@ export default function ChatBotPage() {
 
   // --- UI ---
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Input area with logo + mic */}
-      <div className="border-t bg-white p-4 flex items-center space-x-2">
-        <img src="/logo.png" alt="Logo" className="w-16 h-16" /> {/* Logo */}
-        <input
-          type="text"
-          placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
+    <div className="min-h-screen bg-gray-50 flex flex-col">
+      {/* 🔹 Search Toolbar */}
+      <div className="bg-white p-4 flex items-center gap-3 shadow-sm">
+        <img src="/logo.png" alt="Logo" className="w-12 h-12" />
+        <Input
+          placeholder="Search... e.g. 'pizza within 2 km'"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
-          className="flex-1 border rounded-lg px-3 py-2"
+          className="flex-1"
         />
-        <button
+        <Button
+          variant={isListening ? "destructive" : "secondary"}
+          size="icon"
           onClick={handleVoiceInput}
-          className={`px-3 py-2 rounded-lg flex items-center justify-center ${
-            isListening ? "bg-red-500 text-white" : "bg-gray-200"
-          }`}
         >
           <Mic size={20} />
-        </button>
-        <button
-          onClick={() => setShowMap(true)}
-          className="bg-gray-200 px-3 py-2 rounded-lg flex items-center justify-center"
-        >
+        </Button>
+        <Button variant="secondary" size="icon" onClick={() => setShowMap(true)}>
           <MapPin size={20} />
-        </button>
-        <button
-          onClick={handleParse}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center justify-center"
-        >
+        </Button>
+        <Button onClick={handleParse}>
           <Search size={20} className="mr-1" /> Search
-        </button>
+        </Button>
       </div>
 
-      {/* Tabs */}
-      <div className="flex justify-center bg-white shadow">
-        <button
-          className={`flex-1 py-2 ${
-            activeTab === "dining" ? "border-b-4 border-blue-500 font-semibold" : ""
-          }`}
-          onClick={() => setActiveTab("dining")}
-        >
-          Dining Out
-        </button>
-        <button
-          className={`flex-1 py-2 ${
-            activeTab === "delivery" ? "border-b-4 border-blue-500 font-semibold" : ""
-          }`}
-          onClick={() => setActiveTab("delivery")}
-        >
-          Delivery
-        </button>
-      </div>
+      {/* 🔹 Tabs */}
+      <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 items-center">
+        <TabsList className="w-1/2 text-3xl font-bold grid grid-cols-2 sticky top-0 bg-white z-10 shadow">
+          <TabsTrigger value="dining"><HomeIcon size={20} /> Dining Out</TabsTrigger>
+          <TabsTrigger value="delivery"><Bike size={20} /> Delivery</TabsTrigger>
+        </TabsList>
 
-      <div className="flex-1 p-6 overflow-y-auto">
-        {/* Dining Out tab */}
-        {activeTab === "dining" && restaurants.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {restaurants.map((r, idx) => {
-              const distance =
-                userLocation && r.geometry?.location
-                  ? calculateDistance(
-                      userLocation.lat,
-                      userLocation.lng,
-                      r.geometry.location.lat,
-                      r.geometry.location.lng
-                    )
-                  : null;
-              return (
-                <div
-                  key={idx}
-                  className="bg-white rounded-xl shadow-md border overflow-hidden"
-                >
-                  {r.photos && r.photos.length > 0 ? (
-                    <img
-                      src={getPhotoUrl(r.photos[0].photo_reference)}
-                      alt={r.name}
-                      className="w-full h-32 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-32 bg-gray-200 flex items-center justify-center">
-                      No Image
-                    </div>
-                  )}
-                  <div className="p-3">
-                    <h2 className="text-md font-semibold">{r.name}</h2>
-                    <p className="text-sm text-gray-600">{r.vicinity}</p>
-                    <p className="text-yellow-600 flex items-center">
-                      <Star size={16} className="mr-1 text-yellow-600" />
-                      {r.rating || "N/A"} ({r.user_ratings_total || 0})
-                    </p>
-                    <p className="text-green-600 flex items-center">
-                      <IndianRupee size={16} className="mr-1" />{" "}
-                      {getPriceRange(r.price_level)}
-                    </p>
-                    {distance && (
-                      <p className="text-gray-700 flex items-center">
-                        <Ruler size={16} className="mr-1" /> {distance} km away
-                      </p>
+        {/* Dining Out */}
+        <TabsContent value="dining" className="p-24">
+          {restaurants.length === 0 ? (
+            <p className="text-center text-gray-500">No restaurants found. Try searching!</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {restaurants.map((r, idx) => {
+                const distance =
+                  userLocation && r.geometry?.location
+                    ? calculateDistance(
+                        userLocation.lat,
+                        userLocation.lng,
+                        r.geometry.location.lat,
+                        r.geometry.location.lng
+                      )
+                    : null;
+                return (
+                  <Card key={idx} className="overflow-hidden rounded-2xl">
+                    {r.photos?.length > 0 ? (
+                      <img
+                        src={getPhotoUrl(r.photos[0].photo_reference)}
+                        alt={r.name}
+                        className="w-full h-36 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-36 bg-gray-200 flex items-center justify-center">
+                        No Image
+                      </div>
                     )}
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
+                    <CardHeader>
+                      <CardTitle className="text-lg font-semibold">{r.name}</CardTitle>
+                      <p className="text-sm text-gray-600">{r.vicinity}</p>
+                    </CardHeader>
+                    <CardContent className="space-y-2">
+                      <p className="text-yellow-600 flex items-center">
+                        <Star size={16} className="mr-1" /> {r.rating || "N/A"} ({r.user_ratings_total || 0})
+                      </p>
+                      <p className="text-green-600 flex items-center">
+                        <IndianRupee size={16} className="mr-1" /> {getPriceRange(r.price_level)}
+                      </p>
+                      {distance && (
+                        <p className="text-gray-700 flex items-center text-sm">
+                          <Ruler size={16} className="mr-1" /> {distance} km away
+                        </p>
+                      )}
+                    </CardContent>
+                  </Card>
+                );
+              })}
+            </div>
+          )}
+        </TabsContent>
 
-        {/* Delivery tab */}
-        {activeTab === "delivery" && foodImages.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
-            {foodImages.map((img, idx) => (
-              <div
-                key={idx}
-                className="bg-white rounded-xl shadow-md border overflow-hidden"
-              >
-                <img
-                  src={img.link}
-                  alt={keyword}
-                  className="w-full h-32 object-cover"
-                />
-                <div className="p-3">
-                  <h2 className="text-md font-semibold">{restaurants[idx]?.name}</h2>
-                  <p className="text-yellow-600 flex items-center">
-                    <Star size={16} className="mr-1" />
-                    {restaurants[idx]?.rating || "N/A"} (
-                    {restaurants[idx]?.user_ratings_total || 0})
-                  </p>
-                  <p className="text-sm text-gray-600 flex items-center">
-                    <Ruler size={16} className="mr-1" />
-                    {userLocation && restaurants[idx]?.geometry?.location
-                      ? calculateDistance(
+        {/* Delivery */}
+        <TabsContent value="delivery" className="p-24">
+          {foodImages.length === 0 ? (
+            <p className="text-center text-gray-500">No food images found. Try searching!</p>
+          ) : (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+              {foodImages.map((img, idx) => (
+                <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
+                  <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
+                  <CardContent className="pt-3">
+                    <h2 className="text-md font-semibold">{restaurants[idx]?.name}</h2>
+                    <p className="text-yellow-600 flex items-center">
+                      <Star size={16} className="mr-1" />
+                      {restaurants[idx]?.rating || "N/A"} ({restaurants[idx]?.user_ratings_total || 0})
+                    </p>
+                    {userLocation && restaurants[idx]?.geometry?.location && (
+                      <p className="text-sm text-gray-600 flex items-center">
+                        <Ruler size={16} className="mr-1" />
+                        {calculateDistance(
                           userLocation.lat,
                           userLocation.lng,
                           restaurants[idx].geometry.location.lat,
                           restaurants[idx].geometry.location.lng
-                        )
-                      : null}{" "}
-                    km
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+                        )}{" "}
+                        km
+                      </p>
+                    )}
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
 
-      {/* Map Popup */}
-      {showMap && (
-        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
-          <div className="bg-white rounded-lg p-4 w-[90%] max-w-2xl">
-            <h2 className="font-semibold mb-2">Select Location</h2>
-            {isLoaded ? (
-              <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={userLocation || defaultCenter}
-                zoom={14}
-                onClick={(e) =>
-                  setUserLocation({
-                    lat: e.latLng?.lat() || 0,
-                    lng: e.latLng?.lng() || 0,
-                  })
-                }
-              >
-                {userLocation && (
-                  <Marker
-                    position={userLocation}
-                    draggable
-                    onDragEnd={(e) =>
-                      setUserLocation({
-                        lat: e.latLng?.lat() || 0,
-                        lng: e.latLng?.lng() || 0,
-                      })
-                    }
-                  />
-                )}
-              </GoogleMap>
-            ) : (
-              <p>Loading map...</p>
-            )}
-            <button
-              onClick={() => setShowMap(false)}
-              className="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg"
+      {/* 🔹 Map Dialog */}
+      <Dialog open={showMap} onOpenChange={setShowMap}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Select Location</DialogTitle>
+          </DialogHeader>
+          {isLoaded ? (
+            <GoogleMap
+              mapContainerStyle={containerStyle}
+              center={userLocation || defaultCenter}
+              zoom={14}
+              onClick={(e) =>
+                setUserLocation({
+                  lat: e.latLng?.lat() || 0,
+                  lng: e.latLng?.lng() || 0,
+                })
+              }
             >
-              Confirm Location
-            </button>
-          </div>
-        </div>
-      )}
+              {userLocation && (
+                <Marker
+                  position={userLocation}
+                  draggable
+                  onDragEnd={(e) =>
+                    setUserLocation({
+                      lat: e.latLng?.lat() || 0,
+                      lng: e.latLng?.lng() || 0,
+                    })
+                  }
+                />
+              )}
+            </GoogleMap>
+          ) : (
+            <p>Loading map...</p>
+          )}
+          <DialogFooter>
+            <Button onClick={() => setShowMap(false)}>Confirm Location</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
