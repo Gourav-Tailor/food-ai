@@ -3,6 +3,14 @@
 import { useState, useRef } from "react";
 import axios from "axios";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
+import {
+  Mic,
+  MapPin,
+  Search,
+  Star,
+  IndianRupee,
+  Ruler,
+} from "lucide-react"; // lucide-react icons
 
 const containerStyle = {
   width: "100%",
@@ -203,7 +211,7 @@ export default function ChatBotPage() {
     <div className="min-h-screen bg-gray-100 flex flex-col">
       {/* Input area with logo + mic */}
       <div className="border-t bg-white p-4 flex items-center space-x-2">
-        <img src="/logo.png" alt="Logo" className="w-32 h-32" /> {/* Logo */}
+        <img src="/logo.png" alt="Logo" className="w-16 h-16" /> {/* Logo */}
         <input
           type="text"
           placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
@@ -213,28 +221,40 @@ export default function ChatBotPage() {
         />
         <button
           onClick={handleVoiceInput}
-          className={`px-3 py-2 rounded-lg ${isListening ? "bg-red-500 text-white" : "bg-gray-200"}`}
+          className={`px-3 py-2 rounded-lg flex items-center justify-center ${
+            isListening ? "bg-red-500 text-white" : "bg-gray-200"
+          }`}
         >
-          🎙️
+          <Mic size={20} />
         </button>
-        <button onClick={() => setShowMap(true)} className="bg-gray-200 px-3 py-2 rounded-lg">
-          📍
+        <button
+          onClick={() => setShowMap(true)}
+          className="bg-gray-200 px-3 py-2 rounded-lg flex items-center justify-center"
+        >
+          <MapPin size={20} />
         </button>
-        <button onClick={handleParse} className="bg-blue-500 text-white px-4 py-2 rounded-lg">
-          Search
+        <button
+          onClick={handleParse}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center justify-center"
+        >
+          <Search size={20} className="mr-1" /> Search
         </button>
       </div>
 
       {/* Tabs */}
       <div className="flex justify-center bg-white shadow">
         <button
-          className={`flex-1 py-2 ${activeTab === "dining" ? "border-b-4 border-blue-500 font-semibold" : ""}`}
+          className={`flex-1 py-2 ${
+            activeTab === "dining" ? "border-b-4 border-blue-500 font-semibold" : ""
+          }`}
           onClick={() => setActiveTab("dining")}
         >
           Dining Out
         </button>
         <button
-          className={`flex-1 py-2 ${activeTab === "delivery" ? "border-b-4 border-blue-500 font-semibold" : ""}`}
+          className={`flex-1 py-2 ${
+            activeTab === "delivery" ? "border-b-4 border-blue-500 font-semibold" : ""
+          }`}
           onClick={() => setActiveTab("delivery")}
         >
           Delivery
@@ -256,7 +276,10 @@ export default function ChatBotPage() {
                     )
                   : null;
               return (
-                <div key={idx} className="bg-white rounded-xl shadow-md border overflow-hidden">
+                <div
+                  key={idx}
+                  className="bg-white rounded-xl shadow-md border overflow-hidden"
+                >
                   {r.photos && r.photos.length > 0 ? (
                     <img
                       src={getPhotoUrl(r.photos[0].photo_reference)}
@@ -271,9 +294,19 @@ export default function ChatBotPage() {
                   <div className="p-3">
                     <h2 className="text-md font-semibold">{r.name}</h2>
                     <p className="text-sm text-gray-600">{r.vicinity}</p>
-                    <p className="text-yellow-600">⭐ {r.rating || "N/A"} ({r.user_ratings_total || 0})</p>
-                    <p className="text-green-600">💲 {getPriceRange(r.price_level)}</p>
-                    {distance && <p className="text-gray-700">📏 {distance} km away</p>}
+                    <p className="text-yellow-600 flex items-center">
+                      <Star size={16} className="mr-1 text-yellow-600" />
+                      {r.rating || "N/A"} ({r.user_ratings_total || 0})
+                    </p>
+                    <p className="text-green-600 flex items-center">
+                      <IndianRupee size={16} className="mr-1" />{" "}
+                      {getPriceRange(r.price_level)}
+                    </p>
+                    {distance && (
+                      <p className="text-gray-700 flex items-center">
+                        <Ruler size={16} className="mr-1" /> {distance} km away
+                      </p>
+                    )}
                   </div>
                 </div>
               );
@@ -285,20 +318,34 @@ export default function ChatBotPage() {
         {activeTab === "delivery" && foodImages.length > 0 && (
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
             {foodImages.map((img, idx) => (
-              <div key={idx} className="bg-white rounded-xl shadow-md border overflow-hidden">
-                <img src={img.link} alt={keyword} className="w-full h-32 object-cover" />
+              <div
+                key={idx}
+                className="bg-white rounded-xl shadow-md border overflow-hidden"
+              >
+                <img
+                  src={img.link}
+                  alt={keyword}
+                  className="w-full h-32 object-cover"
+                />
                 <div className="p-3">
-                  <h2 className="text-md font-semibold">{restaurants[idx].name}</h2>
-                  <p className="text-yellow-600">⭐ {restaurants[idx].rating || "N/A"} ({restaurants[idx].user_ratings_total || 0})</p>
-                  <p className="text-sm text-gray-600 flex">
-                    {userLocation && restaurants[idx].geometry?.location
+                  <h2 className="text-md font-semibold">{restaurants[idx]?.name}</h2>
+                  <p className="text-yellow-600 flex items-center">
+                    <Star size={16} className="mr-1" />
+                    {restaurants[idx]?.rating || "N/A"} (
+                    {restaurants[idx]?.user_ratings_total || 0})
+                  </p>
+                  <p className="text-sm text-gray-600 flex items-center">
+                    <Ruler size={16} className="mr-1" />
+                    {userLocation && restaurants[idx]?.geometry?.location
                       ? calculateDistance(
                           userLocation.lat,
                           userLocation.lng,
                           restaurants[idx].geometry.location.lat,
                           restaurants[idx].geometry.location.lng
                         )
-                      : null} KM</p>
+                      : null}{" "}
+                    km
+                  </p>
                 </div>
               </div>
             ))}
@@ -317,7 +364,10 @@ export default function ChatBotPage() {
                 center={userLocation || defaultCenter}
                 zoom={14}
                 onClick={(e) =>
-                  setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
+                  setUserLocation({
+                    lat: e.latLng?.lat() || 0,
+                    lng: e.latLng?.lng() || 0,
+                  })
                 }
               >
                 {userLocation && (
@@ -325,7 +375,10 @@ export default function ChatBotPage() {
                     position={userLocation}
                     draggable
                     onDragEnd={(e) =>
-                      setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
+                      setUserLocation({
+                        lat: e.latLng?.lat() || 0,
+                        lng: e.latLng?.lng() || 0,
+                      })
                     }
                   />
                 )}
