@@ -15,7 +15,6 @@ const defaultCenter = {
 };
 
 export default function ChatBotPage() {
-  const [messages, setMessages] = useState<any[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [foodImages, setFoodImages] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -27,6 +26,7 @@ export default function ChatBotPage() {
   const [userAddress, setUserAddress] = useState<string>("");
   const [showMap, setShowMap] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [activeTab, setActiveTab] = useState<"dining" | "delivery">("dining");
 
   const recognitionRef = useRef<any>(null);
 
@@ -83,12 +83,18 @@ export default function ChatBotPage() {
   const getPriceRange = (priceLevel?: number): string => {
     if (priceLevel === undefined) return "N/A";
     switch (priceLevel) {
-      case 0: return "Free";
-      case 1: return "₹ (Inexpensive)";
-      case 2: return "₹₹ (Moderate)";
-      case 3: return "₹₹₹ (Expensive)";
-      case 4: return "₹₹₹₹ (Very Expensive)";
-      default: return "N/A";
+      case 0:
+        return "Free";
+      case 1:
+        return "₹ (Inexpensive)";
+      case 2:
+        return "₹₹ (Moderate)";
+      case 3:
+        return "₹₹₹ (Expensive)";
+      case 4:
+        return "₹₹₹₹ (Very Expensive)";
+      default:
+        return "N/A";
     }
   };
 
@@ -99,8 +105,7 @@ export default function ChatBotPage() {
     const dLon = toRad(lon2 - lon1);
     const a =
       Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) *
-      Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
     const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
     return (R * c).toFixed(2);
   };
@@ -154,24 +159,6 @@ export default function ChatBotPage() {
     setLoading(false);
   };
 
-  const handleSearch = async () => {
-    setMessages((prev) => [
-      ...prev,
-      { type: "user", text: `Search restaurants for "${keyword}" within ${radius}m` },
-    ]);
-
-    await fetchRestaurants();
-    await fetchFoodImages();
-
-    setMessages((prev) => [
-      ...prev,
-      {
-        type: "bot",
-        text: `Here are restaurants near ${userAddress || "your location"} and some "${keyword}" food images.`,
-      },
-    ]);
-  };
-
   const handleParse = async () => {
     try {
       await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -185,7 +172,8 @@ export default function ChatBotPage() {
           messages: [
             {
               role: "system",
-              content: "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
+              content:
+                "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
             },
             {
               role: "user",
@@ -203,7 +191,8 @@ export default function ChatBotPage() {
           setRadius(parserJDData.radius);
         });
 
-      await handleSearch();
+      await fetchRestaurants();
+      await fetchFoodImages();
     } catch (err: any) {
       console.error("Frontend error:", err.response?.data || err.message);
     }
@@ -212,9 +201,9 @@ export default function ChatBotPage() {
   // --- UI ---
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-
-      {/* Input area with mic */}
+      {/* Input area with logo + mic */}
       <div className="border-t bg-white p-4 flex items-center space-x-2">
+        <img src="/logo.png" alt="Logo" className="w-32 h-32" /> {/* Logo */}
         <input
           type="text"
           placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
@@ -228,82 +217,91 @@ export default function ChatBotPage() {
         >
           🎙️
         </button>
-        <button
-          onClick={() => setShowMap(true)}
-          className="bg-gray-200 px-3 py-2 rounded-lg"
-        >
+        <button onClick={() => setShowMap(true)} className="bg-gray-200 px-3 py-2 rounded-lg">
           📍
         </button>
-        <button
-          onClick={handleParse}
-          className="bg-blue-500 text-white px-4 py-2 rounded-lg"
-        >
-          Send
+        <button onClick={handleParse} className="bg-blue-500 text-white px-4 py-2 rounded-lg">
+          Search
         </button>
       </div>
 
-      <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-        {/* Restaurant carousel */}
-        {restaurants.length > 0 && (
-          <div className="mt-4">
-            <h2 className="font-semibold text-lg mb-2">🍴 Restaurants</h2>
-            <div className="flex space-x-4 overflow-x-auto pb-2">
-              {restaurants.map((r, idx) => {
-                const distance =
-                  userLocation && r.geometry?.location
-                    ? calculateDistance(
-                        userLocation.lat,
-                        userLocation.lng,
-                        r.geometry.location.lat,
-                        r.geometry.location.lng
-                      )
-                    : null;
-                return (
-                  <div
-                    key={idx}
-                    className="bg-white min-w-[250px] rounded-xl shadow-md border overflow-hidden"
-                  >
-                    {r.photos && r.photos.length > 0 ? (
-                      <img
-                        src={getPhotoUrl(r.photos[0].photo_reference)}
-                        alt={r.name}
-                        className="w-full h-32 object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-32 bg-gray-200 flex items-center justify-center">
-                        No Image
-                      </div>
-                    )}
-                    <div className="p-3">
-                      <h2 className="text-md font-semibold">{r.name}</h2>
-                      <p className="text-sm text-gray-600">{r.vicinity}</p>
-                      <p className="text-yellow-600">
-                        ⭐ {r.rating || "N/A"} ({r.user_ratings_total || 0})
-                      </p>
-                      <p className="text-green-600">💲 {getPriceRange(r.price_level)}</p>
-                      {distance && <p className="text-gray-700">📏 {distance} km away</p>}
+      {/* Tabs */}
+      <div className="flex justify-center bg-white shadow">
+        <button
+          className={`flex-1 py-2 ${activeTab === "dining" ? "border-b-4 border-blue-500 font-semibold" : ""}`}
+          onClick={() => setActiveTab("dining")}
+        >
+          Dining Out
+        </button>
+        <button
+          className={`flex-1 py-2 ${activeTab === "delivery" ? "border-b-4 border-blue-500 font-semibold" : ""}`}
+          onClick={() => setActiveTab("delivery")}
+        >
+          Delivery
+        </button>
+      </div>
+
+      <div className="flex-1 p-6 overflow-y-auto">
+        {/* Dining Out tab */}
+        {activeTab === "dining" && restaurants.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {restaurants.map((r, idx) => {
+              const distance =
+                userLocation && r.geometry?.location
+                  ? calculateDistance(
+                      userLocation.lat,
+                      userLocation.lng,
+                      r.geometry.location.lat,
+                      r.geometry.location.lng
+                    )
+                  : null;
+              return (
+                <div key={idx} className="bg-white rounded-xl shadow-md border overflow-hidden">
+                  {r.photos && r.photos.length > 0 ? (
+                    <img
+                      src={getPhotoUrl(r.photos[0].photo_reference)}
+                      alt={r.name}
+                      className="w-full h-32 object-cover"
+                    />
+                  ) : (
+                    <div className="w-full h-32 bg-gray-200 flex items-center justify-center">
+                      No Image
                     </div>
+                  )}
+                  <div className="p-3">
+                    <h2 className="text-md font-semibold">{r.name}</h2>
+                    <p className="text-sm text-gray-600">{r.vicinity}</p>
+                    <p className="text-yellow-600">⭐ {r.rating || "N/A"} ({r.user_ratings_total || 0})</p>
+                    <p className="text-green-600">💲 {getPriceRange(r.price_level)}</p>
+                    {distance && <p className="text-gray-700">📏 {distance} km away</p>}
                   </div>
-                );
-              })}
-            </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
-        {/* Food carousel */}
-        {foodImages.length > 0 && (
-          <div className="mt-6">
-            <h2 className="font-semibold text-lg mb-2">🍕 Food Images</h2>
-            <div className="flex space-x-4 overflow-x-auto pb-2">
-              {foodImages.map((img, idx) => (
-                <div
-                  key={idx}
-                  className="bg-white min-w-[200px] rounded-xl shadow-md border overflow-hidden"
-                >
-                  <img src={img.link} alt={keyword} className="w-full h-32 object-cover" />
+        {/* Delivery tab */}
+        {activeTab === "delivery" && foodImages.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+            {foodImages.map((img, idx) => (
+              <div key={idx} className="bg-white rounded-xl shadow-md border overflow-hidden">
+                <img src={img.link} alt={keyword} className="w-full h-32 object-cover" />
+                <div className="p-3">
+                  <h2 className="text-md font-semibold">{restaurants[idx].name}</h2>
+                  <p className="text-yellow-600">⭐ {restaurants[idx].rating || "N/A"} ({restaurants[idx].user_ratings_total || 0})</p>
+                  <p className="text-sm text-gray-600 flex">
+                    {userLocation && restaurants[idx].geometry?.location
+                      ? calculateDistance(
+                          userLocation.lat,
+                          userLocation.lng,
+                          restaurants[idx].geometry.location.lat,
+                          restaurants[idx].geometry.location.lng
+                        )
+                      : null} KM</p>
                 </div>
-              ))}
-            </div>
+              </div>
+            ))}
           </div>
         )}
       </div>
