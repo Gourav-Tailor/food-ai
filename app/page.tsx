@@ -15,6 +15,8 @@ const defaultCenter = {
   lng: 75.82699334517531,
 };
 
+const key_groq = "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";
+
 export default function ChatBotPage() {
   const [messages, setMessages] = useState<any[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
@@ -134,7 +136,7 @@ export default function ChatBotPage() {
             method: "POST",
             headers: {
               "Content-Type": "application/json",
-              Authorization: `Bearer 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`,
+              Authorization: `Bearer ${key_groq}`,
             },
             body: JSON.stringify({
               model: "llama-3.1-8b-instant",
