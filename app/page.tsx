@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
 import axios from "axios";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 
@@ -9,13 +9,10 @@ const containerStyle = {
   height: "400px",
 };
 
-
 const defaultCenter = {
   lat: 26.924179699327425, // Default to New Delhi
   lng: 75.82699334517531,
 };
-
-const key_groq = "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";
 
 export default function ChatBotPage() {
   const [messages, setMessages] = useState<any[]>([]);
@@ -29,10 +26,55 @@ export default function ChatBotPage() {
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [userAddress, setUserAddress] = useState<string>("");
   const [showMap, setShowMap] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+
+  const recognitionRef = useRef<any>(null);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
   });
+
+  // --- Voice Recognition ---
+  const handleVoiceInput = () => {
+    if (typeof window === "undefined") return;
+
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      alert("Sorry, your browser does not support speech recognition.");
+      return;
+    }
+
+    if (!recognitionRef.current) {
+      recognitionRef.current = new SpeechRecognition();
+      recognitionRef.current.continuous = false;
+      recognitionRef.current.interimResults = false;
+      recognitionRef.current.lang = "en-US";
+
+      recognitionRef.current.onresult = (event: any) => {
+        const transcript = event.results[0][0].transcript;
+        setUserInput((prev) => prev + " " + transcript);
+      };
+
+      recognitionRef.current.onerror = (event: any) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+      };
+
+      recognitionRef.current.onend = () => {
+        setIsListening(false);
+      };
+    }
+
+    if (isListening) {
+      recognitionRef.current.stop();
+      setIsListening(false);
+    } else {
+      recognitionRef.current.start();
+      setIsListening(true);
+    }
+  };
 
   // --- Helpers ---
   const getPhotoUrl = (photoReference: string) =>
@@ -133,36 +175,35 @@ export default function ChatBotPage() {
   const handleParse = async () => {
     try {
       await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${key_groq}`,
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`, // use env key
+        },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          messages: [
+            {
+              role: "system",
+              content: "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
             },
-            body: JSON.stringify({
-              model: "llama-3.1-8b-instant",
-              messages: [
-                {
-                  role: "system",
-                  content: "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
-                },
-                {
-                  role: "user",
-                  content: `${userInput}`,
-                },
-              ],
-              response_format: { type: "json_object" },
-              temperature: 0.1,
-            }),
-          })
-            .then((response) => response.json())
-            .then((completion) => {
-              const parserJDData = JSON.parse(completion.choices[0].message.content);
-                   setKeyword(parserJDData.keyword);
-                   setRadius(parserJDData.radius);
-            });
+            {
+              role: "user",
+              content: `${userInput}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+          temperature: 0.1,
+        }),
+      })
+        .then((response) => response.json())
+        .then((completion) => {
+          const parserJDData = JSON.parse(completion.choices[0].message.content);
+          setKeyword(parserJDData.keyword);
+          setRadius(parserJDData.radius);
+        });
 
-            await handleSearch();
-
+      await handleSearch();
     } catch (err: any) {
       console.error("Frontend error:", err.response?.data || err.message);
     }
@@ -171,25 +212,8 @@ export default function ChatBotPage() {
   // --- UI ---
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
-      {/* Chat messages */}
-      <div className="flex-1 p-6 space-y-4 overflow-y-auto">
-        {/* {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}
-          >
-            <div
-              className={`px-4 py-2 rounded-lg max-w-xs ${
-                msg.type === "user"
-                  ? "bg-blue-500 text-white"
-                  : "bg-gray-200 text-gray-900"
-              }`}
-            >
-              {msg.text}
-            </div>
-          </div>
-        ))} */}
 
+      <div className="flex-1 p-6 space-y-4 overflow-y-auto">
         {/* Restaurant carousel */}
         {restaurants.length > 0 && (
           <div className="mt-4">
@@ -255,28 +279,34 @@ export default function ChatBotPage() {
         )}
       </div>
 
-    <div className="border-t bg-white p-4 flex items-center space-x-2">
-      <input
-        type="text"
-        placeholder="Type what you’re looking for... e.g. 'Show me pizza places within 2 km'"
-        value={userInput}
-        onChange={(e) => setUserInput(e.target.value)}
-        className="flex-1 border rounded-lg px-3 py-2"
-      />
+      {/* Input area with mic */}
+      <div className="border-t bg-white p-4 flex items-center space-x-2">
+        <input
+          type="text"
+          placeholder="Type or speak... e.g. 'Show me pizza places within 2 km'"
+          value={userInput}
+          onChange={(e) => setUserInput(e.target.value)}
+          className="flex-1 border rounded-lg px-3 py-2"
+        />
+        <button
+          onClick={handleVoiceInput}
+          className={`px-3 py-2 rounded-lg ${isListening ? "bg-red-500 text-white" : "bg-gray-200"}`}
+        >
+          🎙️
+        </button>
         <button
           onClick={() => setShowMap(true)}
           className="bg-gray-200 px-3 py-2 rounded-lg"
         >
           📍
         </button>
-      <button
-        onClick={handleParse}
-        className="bg-blue-500 text-white px-4 py-2 rounded-lg"
-      >
-        Send
-      </button>
-    </div>
-
+        <button
+          onClick={handleParse}
+          className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+        >
+          Send
+        </button>
+      </div>
 
       {/* Map Popup */}
       {showMap && (
