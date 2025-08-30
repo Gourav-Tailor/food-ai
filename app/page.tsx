@@ -9,87 +9,34 @@ const containerStyle = {
   height: "400px",
 };
 
+
 const defaultCenter = {
-  lat: 28.6139, // Default to New Delhi
-  lng: 77.209,
+  lat: 26.924179699327425, // Default to New Delhi
+  lng: 75.82699334517531,
 };
 
-export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"location" | "list" | "food">("location");
+export default function ChatBotPage() {
+  const [messages, setMessages] = useState<any[]>([]);
   const [restaurants, setRestaurants] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(defaultCenter);
-  const [userAddress, setUserAddress] = useState<string>("");
-
-  // filters
-  const [keyword, setKeyword] = useState<string>("");
-  const [radius, setRadius] = useState<number>(1500); // default 1.5km
   const [foodImages, setFoodImages] = useState<any[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const [keyword, setKeyword] = useState("");
+  const [radius, setRadius] = useState(1500);
+  const [userInput, setUserInput] = useState("");
+  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
+  const [userAddress, setUserAddress] = useState<string>("");
+  const [showMap, setShowMap] = useState(false);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
   });
 
-  const fetchRestaurants = async () => {
-    if (!userLocation) return;
-    setLoading(true);
-
-    // Reverse geocode for address
-    const geoRes = await axios.get("https://maps.googleapis.com/maps/api/geocode/json", {
-      params: {
-        latlng: `${userLocation.lat},${userLocation.lng}`,
-        key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-      },
-    });
-    if (geoRes.data.results.length > 0) {
-      setUserAddress(geoRes.data.results[0].formatted_address);
-    }
-
-    // Fetch restaurants from our API
-    const res = await axios.get("/api/restaurants", {
-      params: {
-        lat: userLocation.lat,
-        lng: userLocation.lng,
-        keyword: keyword || undefined,
-        radius: radius || 1500,
-      },
-    });
-
-    setRestaurants(res.data.results || []);
-    setLoading(false);
-    setActiveTab("list");
-  };
-
-  // Fetch food images using Google Custom Search API
-  const fetchFoodImages = async () => {
-    if (!keyword) return alert("Please enter a food type in filter first.");
-    setLoading(true);
-
-    try {
-      const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
-        params: {
-          q: keyword + " food",
-          cx: process.env.NEXT_PUBLIC_GOOGLE_SEARCH_CX, // Custom Search Engine ID
-          key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-          searchType: "image",
-          num: 9,
-        },
-      });
-
-      setFoodImages(res.data.items || []);
-      setActiveTab("food");
-    } catch (err) {
-      console.error(err);
-      alert("Error fetching food images");
-    } finally {
-      setLoading(false);
-    }
-  };
-
+  // --- Helpers ---
   const getPhotoUrl = (photoReference: string) =>
     `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoReference}&key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`;
 
-  function getPriceRange(priceLevel?: number): string {
+  const getPriceRange = (priceLevel?: number): string => {
     if (priceLevel === undefined) return "N/A";
     switch (priceLevel) {
       case 0: return "Free";
@@ -99,7 +46,7 @@ export default function HomePage() {
       case 4: return "₹₹₹₹ (Very Expensive)";
       default: return "N/A";
     }
-  }
+  };
 
   const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const toRad = (v: number) => (v * Math.PI) / 180;
@@ -114,163 +61,254 @@ export default function HomePage() {
     return (R * c).toFixed(2);
   };
 
+  // --- API Calls ---
+  const fetchRestaurants = async () => {
+    if (!userLocation) return alert("Set location first");
+    setLoading(true);
+
+    // Reverse geocode
+    const geoRes = await axios.get("https://maps.googleapis.com/maps/api/geocode/json", {
+      params: {
+        latlng: `${userLocation.lat},${userLocation.lng}`,
+        key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+      },
+    });
+    if (geoRes.data.results.length > 0) {
+      setUserAddress(geoRes.data.results[0].formatted_address);
+    }
+
+    const res = await axios.get("/api/restaurants", {
+      params: {
+        lat: userLocation.lat,
+        lng: userLocation.lng,
+        keyword: keyword || undefined,
+        radius: radius || 1500,
+      },
+    });
+
+    setRestaurants(res.data.results || []);
+    setLoading(false);
+  };
+
+  const fetchFoodImages = async () => {
+    if (!keyword) return;
+    setLoading(true);
+    try {
+      const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
+        params: {
+          q: keyword + " food",
+          cx: process.env.NEXT_PUBLIC_GOOGLE_SEARCH_CX,
+          key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+          searchType: "image",
+          num: 9,
+        },
+      });
+      setFoodImages(res.data.items || []);
+    } catch (err) {
+      console.error(err);
+    }
+    setLoading(false);
+  };
+
+  const handleSearch = async () => {
+    setMessages((prev) => [
+      ...prev,
+      { type: "user", text: `Search restaurants for "${keyword}" within ${radius}m` },
+    ]);
+
+    await fetchRestaurants();
+    await fetchFoodImages();
+
+    setMessages((prev) => [
+      ...prev,
+      {
+        type: "bot",
+        text: `Here are restaurants near ${userAddress || "your location"} and some "${keyword}" food images.`,
+      },
+    ]);
+  };
+
+  const handleParse = async () => {
+    try {
+      await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer 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`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                {
+                  role: "system",
+                  content: "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
+                },
+                {
+                  role: "user",
+                  content: `${userInput}`,
+                },
+              ],
+              response_format: { type: "json_object" },
+              temperature: 0.1,
+            }),
+          })
+            .then((response) => response.json())
+            .then((completion) => {
+              const parserJDData = JSON.parse(completion.choices[0].message.content);
+                   setKeyword(parserJDData.keyword);
+                   setRadius(parserJDData.radius);
+            });
+
+            await handleSearch();
+
+    } catch (err: any) {
+      console.error("Frontend error:", err.response?.data || err.message);
+    }
+  };
+
+  // --- UI ---
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col p-6">
-      {/* Tabs */}
-      <div className="flex space-x-4 border-b mb-6">
-        <button
-          className={`px-4 py-2 font-medium ${
-            activeTab === "location" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"
-          }`}
-          onClick={() => setActiveTab("location")}
-        >
-          📍 Select Location
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${
-            activeTab === "list" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"
-          }`}
-          onClick={() => setActiveTab("list")}
-        >
-          🍴 Restaurants List
-        </button>
-        <button
-          className={`px-4 py-2 font-medium ${
-            activeTab === "food" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"
-          }`}
-          onClick={fetchFoodImages}
-        >
-          🍕 Food
-        </button>
-      </div>
-
-      {/* Select Location Tab */}
-      {activeTab === "location" && (
-        <div className="flex flex-col items-center w-full">
-          <h1 className="text-2xl font-bold mb-4">Choose Your Location</h1>
-          {isLoaded ? (
-            <GoogleMap
-              mapContainerStyle={containerStyle}
-              center={userLocation || defaultCenter}
-              zoom={14}
-              onClick={(e) =>
-                setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
-              }
-            >
-              {userLocation && (
-                <Marker
-                  position={userLocation}
-                  draggable
-                  onDragEnd={(e) =>
-                    setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
-                  }
-                />
-              )}
-            </GoogleMap>
-          ) : (
-            <p>Loading map...</p>
-          )}
-
-          {/* Filter inputs */}
-          <div className="mt-6 w-full max-w-md space-y-4">
-            <input
-              type="text"
-              placeholder="Type of restaurant/food (optional, e.g. pizza, sushi)"
-              value={keyword}
-              onChange={(e) => setKeyword(e.target.value)}
-              className="w-full border p-2 rounded"
-            />
-            <input
-              type="number"
-              placeholder="Radius in meters (default 1500)"
-              value={radius}
-              onChange={(e) => setRadius(Number(e.target.value))}
-              className="w-full border p-2 rounded"
-            />
-          </div>
-
-          <button
-            onClick={fetchRestaurants}
-            className="mt-4 bg-blue-500 text-white px-6 py-3 rounded-lg hover:bg-blue-600"
+    <div className="min-h-screen bg-gray-100 flex flex-col">
+      {/* Chat messages */}
+      <div className="flex-1 p-6 space-y-4 overflow-y-auto">
+        {/* {messages.map((msg, idx) => (
+          <div
+            key={idx}
+            className={`flex ${msg.type === "user" ? "justify-end" : "justify-start"}`}
           >
-            Find Restaurants Here
-          </button>
+            <div
+              className={`px-4 py-2 rounded-lg max-w-xs ${
+                msg.type === "user"
+                  ? "bg-blue-500 text-white"
+                  : "bg-gray-200 text-gray-900"
+              }`}
+            >
+              {msg.text}
+            </div>
+          </div>
+        ))} */}
 
-          {userAddress && <p className="mt-2 text-gray-700">📍 {userAddress}</p>}
-        </div>
-      )}
+        {/* Restaurant carousel */}
+        {restaurants.length > 0 && (
+          <div className="mt-4">
+            <h2 className="font-semibold text-lg mb-2">🍴 Restaurants</h2>
+            <div className="flex space-x-4 overflow-x-auto pb-2">
+              {restaurants.map((r, idx) => {
+                const distance =
+                  userLocation && r.geometry?.location
+                    ? calculateDistance(
+                        userLocation.lat,
+                        userLocation.lng,
+                        r.geometry.location.lat,
+                        r.geometry.location.lng
+                      )
+                    : null;
+                return (
+                  <div
+                    key={idx}
+                    className="bg-white min-w-[250px] rounded-xl shadow-md border overflow-hidden"
+                  >
+                    {r.photos && r.photos.length > 0 ? (
+                      <img
+                        src={getPhotoUrl(r.photos[0].photo_reference)}
+                        alt={r.name}
+                        className="w-full h-32 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-32 bg-gray-200 flex items-center justify-center">
+                        No Image
+                      </div>
+                    )}
+                    <div className="p-3">
+                      <h2 className="text-md font-semibold">{r.name}</h2>
+                      <p className="text-sm text-gray-600">{r.vicinity}</p>
+                      <p className="text-yellow-600">
+                        ⭐ {r.rating || "N/A"} ({r.user_ratings_total || 0})
+                      </p>
+                      <p className="text-green-600">💲 {getPriceRange(r.price_level)}</p>
+                      {distance && <p className="text-gray-700">📏 {distance} km away</p>}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
-      {/* List Tab */}
-      {activeTab === "list" && (
-        <div>
-          <h1 className="text-2xl font-bold mb-4">Nearby Restaurants</h1>
-          {userAddress && (
-            <p className="mb-4 text-gray-700 font-medium">
-              📍 Your Location: <span className="text-blue-600">{userAddress}</span>
-            </p>
-          )}
-          {loading && <p>Loading...</p>}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {restaurants.map((r, idx) => {
-              const distance =
-                userLocation && r.geometry?.location
-                  ? calculateDistance(
-                      userLocation.lat,
-                      userLocation.lng,
-                      r.geometry.location.lat,
-                      r.geometry.location.lng
-                    )
-                  : null;
-              return (
+        {/* Food carousel */}
+        {foodImages.length > 0 && (
+          <div className="mt-6">
+            <h2 className="font-semibold text-lg mb-2">🍕 Food Images</h2>
+            <div className="flex space-x-4 overflow-x-auto pb-2">
+              {foodImages.map((img, idx) => (
                 <div
                   key={idx}
-                  className="bg-white rounded-xl shadow-md border overflow-hidden hover:shadow-lg transition"
+                  className="bg-white min-w-[200px] rounded-xl shadow-md border overflow-hidden"
                 >
-                  {r.photos && r.photos.length > 0 ? (
-                    <img
-                      src={getPhotoUrl(r.photos[0].photo_reference)}
-                      alt={r.name}
-                      className="w-full h-48 object-cover"
-                    />
-                  ) : (
-                    <div className="w-full h-48 bg-gray-200 flex items-center justify-center text-gray-500">
-                      No Image
-                    </div>
-                  )}
-                  <div className="p-4">
-                    <h2 className="text-lg font-semibold">{r.name}</h2>
-                    <p className="text-gray-600">{r.vicinity}</p>
-                    <p className="text-yellow-600">
-                      ⭐ {r.rating || "N/A"} ({r.user_ratings_total || 0} reviews)
-                    </p>
-                    <p className="text-green-600">💲 {getPriceRange(r.price_level)}</p>
-                    {distance && <p className="text-gray-700">📏 {distance} km away</p>}
-                  </div>
+                  <img src={img.link} alt={keyword} className="w-full h-32 object-cover" />
                 </div>
-              );
-            })}
+              ))}
+            </div>
           </div>
-        </div>
-      )}
+        )}
+      </div>
 
-      {/* Food Tab */}
-      {activeTab === "food" && (
-        <div>
-          <h1 className="text-2xl font-bold mb-4">🍕 Food Images for "{keyword}"</h1>
-          {loading && <p>Loading...</p>}
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {foodImages.map((img, idx) => (
-              <div
-                key={idx}
-                className="bg-white rounded-xl shadow-md border overflow-hidden hover:shadow-lg transition"
+    <div className="border-t bg-white p-4 flex items-center space-x-2">
+      <input
+        type="text"
+        placeholder="Type what you’re looking for... e.g. 'Show me pizza places within 2 km'"
+        value={userInput}
+        onChange={(e) => setUserInput(e.target.value)}
+        className="flex-1 border rounded-lg px-3 py-2"
+      />
+        <button
+          onClick={() => setShowMap(true)}
+          className="bg-gray-200 px-3 py-2 rounded-lg"
+        >
+          📍
+        </button>
+      <button
+        onClick={handleParse}
+        className="bg-blue-500 text-white px-4 py-2 rounded-lg"
+      >
+        Send
+      </button>
+    </div>
+
+
+      {/* Map Popup */}
+      {showMap && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-4 w-[90%] max-w-2xl">
+            <h2 className="font-semibold mb-2">Select Location</h2>
+            {isLoaded ? (
+              <GoogleMap
+                mapContainerStyle={containerStyle}
+                center={userLocation || defaultCenter}
+                zoom={14}
+                onClick={(e) =>
+                  setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
+                }
               >
-                <img
-                  src={img.link}
-                  alt={keyword}
-                  className="w-full h-48 object-cover"
-                />
-              </div>
-            ))}
+                {userLocation && (
+                  <Marker
+                    position={userLocation}
+                    draggable
+                    onDragEnd={(e) =>
+                      setUserLocation({ lat: e.latLng?.lat() || 0, lng: e.latLng?.lng() || 0 })
+                    }
+                  />
+                )}
+              </GoogleMap>
+            ) : (
+              <p>Loading map...</p>
+            )}
+            <button
+              onClick={() => setShowMap(false)}
+              className="mt-3 bg-blue-500 text-white px-4 py-2 rounded-lg"
+            >
+              Confirm Location
+            </button>
           </div>
         </div>
       )}
