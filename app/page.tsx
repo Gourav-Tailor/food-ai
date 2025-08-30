@@ -15,15 +15,16 @@ const defaultCenter = {
 };
 
 export default function HomePage() {
-  const [activeTab, setActiveTab] = useState<"location" | "list">("location");
+  const [activeTab, setActiveTab] = useState<"location" | "list" | "food">("location");
   const [restaurants, setRestaurants] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(defaultCenter);
   const [userAddress, setUserAddress] = useState<string>("");
 
-  // new state for filters
+  // filters
   const [keyword, setKeyword] = useState<string>("");
   const [radius, setRadius] = useState<number>(1500); // default 1.5km
+  const [foodImages, setFoodImages] = useState<any[]>([]);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
@@ -57,6 +58,32 @@ export default function HomePage() {
     setRestaurants(res.data.results || []);
     setLoading(false);
     setActiveTab("list");
+  };
+
+  // Fetch food images using Google Custom Search API
+  const fetchFoodImages = async () => {
+    if (!keyword) return alert("Please enter a food type in filter first.");
+    setLoading(true);
+
+    try {
+      const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
+        params: {
+          q: keyword + " food",
+          cx: process.env.NEXT_PUBLIC_GOOGLE_SEARCH_CX, // Custom Search Engine ID
+          key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
+          searchType: "image",
+          num: 9,
+        },
+      });
+
+      setFoodImages(res.data.items || []);
+      setActiveTab("food");
+    } catch (err) {
+      console.error(err);
+      alert("Error fetching food images");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getPhotoUrl = (photoReference: string) =>
@@ -107,6 +134,14 @@ export default function HomePage() {
         >
           🍴 Restaurants List
         </button>
+        <button
+          className={`px-4 py-2 font-medium ${
+            activeTab === "food" ? "border-b-2 border-blue-600 text-blue-600" : "text-gray-600"
+          }`}
+          onClick={fetchFoodImages}
+        >
+          🍕 Food
+        </button>
       </div>
 
       {/* Select Location Tab */}
@@ -140,7 +175,7 @@ export default function HomePage() {
           <div className="mt-6 w-full max-w-md space-y-4">
             <input
               type="text"
-              placeholder="Type of restaurant (optional, e.g. pizza, sushi)"
+              placeholder="Type of restaurant/food (optional, e.g. pizza, sushi)"
               value={keyword}
               onChange={(e) => setKeyword(e.target.value)}
               className="w-full border p-2 rounded"
@@ -214,6 +249,28 @@ export default function HomePage() {
                 </div>
               );
             })}
+          </div>
+        </div>
+      )}
+
+      {/* Food Tab */}
+      {activeTab === "food" && (
+        <div>
+          <h1 className="text-2xl font-bold mb-4">🍕 Food Images for "{keyword}"</h1>
+          {loading && <p>Loading...</p>}
+          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+            {foodImages.map((img, idx) => (
+              <div
+                key={idx}
+                className="bg-white rounded-xl shadow-md border overflow-hidden hover:shadow-lg transition"
+              >
+                <img
+                  src={img.link}
+                  alt={keyword}
+                  className="w-full h-48 object-cover"
+                />
+              </div>
+            ))}
           </div>
         </div>
       )}
