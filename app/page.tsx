@@ -12,6 +12,7 @@ import {
   Ruler,
   HomeIcon,
   Bike,
+  ShoppingCart,
 } from "lucide-react";
 
 // ✅ shadcn/ui components
@@ -37,6 +38,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { VoiceIndicator } from "@/components/ui/voice-indicator";
+import { Badge } from "@/components/ui/badge";
 
 const containerStyle = {
   width: "100%",
@@ -47,6 +49,14 @@ const defaultCenter = {
   lat: 26.924179699327425,
   lng: 75.82699334517531,
 };
+
+interface CartItem {
+  id: string;
+  name: string;
+  quantity: number;
+  type: "dining" | "delivery";
+  image?: string;
+}
 
 export default function ChatBotPage() {
   const [restaurants, setRestaurants] = useState<any[]>([]);
@@ -61,6 +71,10 @@ export default function ChatBotPage() {
   const [showMap, setShowMap] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [activeTab, setActiveTab] = useState<"dining" | "delivery">("dining");
+
+  const [cart, setCart] = useState<CartItem[]>([]);
+  const [showCart, setShowCart] = useState(false);
+  const [quantities, setQuantities] = useState<Record<string, number>>({});
 
   const recognitionRef = useRef<any>(null);
 
@@ -247,6 +261,22 @@ export default function ChatBotPage() {
     }
   };
 
+  const addToCart = (id: string, name: string, quantity: number, type: "dining" | "delivery", image?: string) => {
+    if (quantity <= 0) return;
+    setCart((prev) => {
+      const exist = prev.find((i) => i.id === id);
+      if (exist) {
+        return prev.map((i) =>
+          i.id === id ? { ...i, quantity: i.quantity + quantity } : i
+        );
+      } else {
+        return [...prev, { id, name, quantity, type, image }];
+      }
+    });
+    setQuantities((prev) => ({ ...prev, [id]: 0 })); // reset quantity
+    speak(`Added ${quantity} of ${name} to cart.`);
+  };
+
   const handleParse = async () => {
     try {
       const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
@@ -261,7 +291,7 @@ export default function ChatBotPage() {
             {
               role: "system",
               content:
-                "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). Parse the distance unit and convert to meters (e.g., 1 km = 1000, 500 m = 500). If not found, use defaults: keyword='', radius=1500.",
+                "You are a parser. Extract parameters from user text. If the user is searching for restaurants or food, output JSON {type: 'search', keyword: string, radius: number in meters}. If the user is adding to cart like 'add 2 pizzas' or 'I want 3 burgers', output {type: 'add', item: string, quantity: number}. Parse distance unit and convert to meters (e.g., 1 km = 1000, 500 m = 500). Defaults: keyword='', radius=1500, quantity=1.",
             },
             {
               role: "user",
@@ -274,6 +304,13 @@ export default function ChatBotPage() {
       });
       const completion = await response.json();
       const parsedData = JSON.parse(completion.choices[0].message.content);
+
+      if (parsedData.type === "add") {
+        const id = parsedData.item; // Use item as id for voice adds
+        addToCart(id, parsedData.item, parsedData.quantity || 1, activeTab);
+        return;
+      }
+
       setKeyword(parsedData.keyword);
       setRadius(parsedData.radius);
 
@@ -355,6 +392,14 @@ export default function ChatBotPage() {
         {/* <Button onClick={handleParse}>
           <Search size={20} className="mr-1" /> Search
         </Button> */}
+        <Button variant="secondary" size="icon" onClick={() => setShowCart(true)}>
+          <ShoppingCart size={20} />
+          {cart.reduce((sum, item) => sum + item.quantity, 0) > 0 && (
+            <Badge className="ml-1">
+              {cart.reduce((sum, item) => sum + item.quantity, 0)}
+            </Badge>
+          )}
+        </Button>
         <VoiceIndicator isActive={isListening} />
       </div>
 
@@ -367,6 +412,16 @@ export default function ChatBotPage() {
 
         {/* Dining Out */}
         <TabsContent value="dining" className="p-24">
+          {foodImages.length > 0 && (
+            <div className="mb-6">
+              <h2 className="text-xl font-bold mb-2">Related Food Images</h2>
+              <div className="grid grid-cols-3 gap-2">
+                {foodImages.map((img) => (
+                  <img key={img.link} src={img.link} alt="" className="h-24 object-cover rounded" />
+                ))}
+              </div>
+            </div>
+          )}
           {restaurants.length === 0 ? (
             <p className="text-center text-gray-500">No restaurants found. Try searching!</p>
           ) : (
@@ -381,6 +436,9 @@ export default function ChatBotPage() {
                         r.geometry.location.lng
                       )
                     : null;
+                const id = r.place_id;
+                const quantity = quantities[id] || 0;
+                const image = r.photos?.[0] ? getPhotoUrl(r.photos[0].photo_reference) : undefined;
                 return (
                   <Card key={idx} className="overflow-hidden rounded-2xl">
                     {r.photos?.length > 0 ? (
@@ -411,6 +469,31 @@ export default function ChatBotPage() {
                         </p>
                       )}
                     </CardContent>
+                    <div className="flex items-center justify-between p-4 border-t">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setQuantities({ ...quantities, [id]: Math.max(0, quantity - 1) })}
+                        >
+                          -
+                        </Button>
+                        <span>{quantity}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setQuantities({ ...quantities, [id]: quantity + 1 })}
+                        >
+                          +
+                        </Button>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => addToCart(id, r.name, quantity, "dining", image)}
+                      >
+                        Add to Cart
+                      </Button>
+                    </div>
                   </Card>
                 );
               })}
@@ -424,30 +507,64 @@ export default function ChatBotPage() {
             <p className="text-center text-gray-500">No food images found. Try searching!</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {foodImages.map((img, idx) => (
-                <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
-                  <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
-                  <CardContent className="pt-3">
-                    <h2 className="text-md font-semibold">{restaurants[idx]?.name || "Food Option"}</h2>
-                    <p className="text-yellow-600 flex items-center">
-                      <Star size={16} className="mr-1" />
-                      {restaurants[idx]?.rating || "N/A"} ({restaurants[idx]?.user_ratings_total || 0})
-                    </p>
-                    {userLocation && restaurants[idx]?.geometry?.location && (
-                      <p className="text-sm text-gray-600 flex items-center">
-                        <Ruler size={16} className="mr-1" />
-                        {calculateDistance(
-                          userLocation.lat,
-                          userLocation.lng,
-                          restaurants[idx].geometry.location.lat,
-                          restaurants[idx].geometry.location.lng
-                        )}{" "}
-                        km
+              {foodImages.map((img, idx) => {
+                const restaurant = restaurants[idx] || {};
+                const id = img.link;
+                const quantity = quantities[id] || 0;
+                const name = restaurant.name || "Food Option";
+                const distance =
+                  userLocation && restaurant.geometry?.location
+                    ? calculateDistance(
+                        userLocation.lat,
+                        userLocation.lng,
+                        restaurant.geometry.location.lat,
+                        restaurant.geometry.location.lng
+                      )
+                    : null;
+                return (
+                  <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
+                    <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
+                    <CardContent className="pt-3 space-y-2">
+                      <h2 className="text-md font-semibold">{name}</h2>
+                      <p className="text-yellow-600 flex items-center">
+                        <Star size={16} className="mr-1" />
+                        {restaurant.rating || "N/A"} ({restaurant.user_ratings_total || 0})
                       </p>
-                    )}
-                  </CardContent>
-                </Card>
-              ))}
+                      {distance && (
+                        <p className="text-sm text-gray-600 flex items-center">
+                          <Ruler size={16} className="mr-1" />
+                          {distance} km
+                        </p>
+                      )}
+                    </CardContent>
+                    <div className="flex items-center justify-between p-4 border-t">
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setQuantities({ ...quantities, [id]: Math.max(0, quantity - 1) })}
+                        >
+                          -
+                        </Button>
+                        <span>{quantity}</span>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => setQuantities({ ...quantities, [id]: quantity + 1 })}
+                        >
+                          +
+                        </Button>
+                      </div>
+                      <Button
+                        size="sm"
+                        onClick={() => addToCart(id, name, quantity, "delivery", img.link)}
+                      >
+                        Add to Cart
+                      </Button>
+                    </div>
+                  </Card>
+                );
+              })}
             </div>
           )}
         </TabsContent>
@@ -489,6 +606,34 @@ export default function ChatBotPage() {
           )}
           <DialogFooter>
             <Button onClick={() => setShowMap(false)}>Confirm Location</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* 🔹 Cart Dialog */}
+      <Dialog open={showCart} onOpenChange={setShowCart}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle>Your Cart</DialogTitle>
+          </DialogHeader>
+          {cart.length === 0 ? (
+            <p className="text-center text-gray-500">Your cart is empty.</p>
+          ) : (
+            <div className="space-y-4">
+              {cart.map((item) => (
+                <div key={item.id} className="flex items-center gap-4">
+                  {item.image && <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded" />}
+                  <div>
+                    <h3 className="font-semibold">{item.name}</h3>
+                    <p>Quantity: {item.quantity}</p>
+                    <p>Type: {item.type}</p>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+          <DialogFooter>
+            <Button onClick={() => { setShowCart(false); speak("Proceeding to checkout."); alert("Checkout complete!"); setCart([]); }}>Checkout</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
