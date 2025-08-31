@@ -46,8 +46,8 @@ const containerStyle = {
 };
 
 const defaultCenter = {
-  lat: 26.924179699327425,
-  lng: 75.82699334517531,
+  lat: 28.611707360891085,
+  lng: 77.22955188008568,
 };
 
 interface CartItem {
@@ -108,12 +108,6 @@ export default function ChatBotPage() {
       recognitionRef.current.interimResults = false;
       recognitionRef.current.lang = "en-US";
 
-      recognitionRef.current.onresult = (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setUserInput(transcript); // Overwrite with new input
-        handleParse();
-      };
-
       recognitionRef.current.onresult = async (event: any) => {
         const transcript = event.results[0][0].transcript;
         setIsListening(false);
@@ -151,7 +145,6 @@ export default function ChatBotPage() {
           handleParse();
         }
       };
-
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
@@ -234,11 +227,12 @@ export default function ChatBotPage() {
     const fetchedRestaurants = res.data.results || [];
     setRestaurants(fetchedRestaurants);
     setLoading(false);
+    await fetchFoodImages();
     return fetchedRestaurants;
   };
 
   const fetchFoodImages = async () => {
-    if (!keyword) return [];
+    // if (!keyword) return [];
     setLoading(true);
     try {
       const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
@@ -311,7 +305,7 @@ export default function ChatBotPage() {
         return;
       }
 
-      setKeyword(parsedData.keyword);
+      setKeyword(keyword + parsedData.keyword);
       setRadius(parsedData.radius);
 
       // Handle location
@@ -349,7 +343,6 @@ export default function ChatBotPage() {
       }
 
       const fetchedRestaurants = await fetchRestaurants(currentLocation!);
-      const fetchedFoodImages = await fetchFoodImages();
 
       speak(
         `Search complete. I found ${fetchedRestaurants.length} restaurants for ${parsedData.keyword} within ${parsedData.radius / 1000} km. Check the dining tab for details and delivery tab for options.`
@@ -373,12 +366,6 @@ export default function ChatBotPage() {
       {/* 🔹 Search Toolbar */}
       <div className="bg-white p-4 flex items-center gap-3 shadow-sm">
         <img src="/logo.png" alt="Logo" className="w-12 h-12" />
-        {/* <Input
-          placeholder="Search... e.g. 'pizza within 2 km'"
-          value={userInput}
-          onChange={(e) => setUserInput(e.target.value)}
-          className="flex-1"
-        /> */}
         <Button
           variant={isListening ? "destructive" : "secondary"}
           size="icon"
@@ -389,9 +376,6 @@ export default function ChatBotPage() {
         <Button variant="secondary" size="icon" onClick={() => setShowMap(true)}>
           <MapPin size={20} />
         </Button>
-        {/* <Button onClick={handleParse}>
-          <Search size={20} className="mr-1" /> Search
-        </Button> */}
         <Button variant="secondary" size="icon" onClick={() => setShowCart(true)}>
           <ShoppingCart size={20} />
           {cart.reduce((sum, item) => sum + item.quantity, 0) > 0 && (
@@ -407,21 +391,11 @@ export default function ChatBotPage() {
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 items-center">
         <TabsList className="w-1/2 text-3xl font-bold grid grid-cols-2 sticky top-0 bg-white z-10 shadow">
           <TabsTrigger value="dining"><HomeIcon size={20} /> Dining Out</TabsTrigger>
-          <TabsTrigger value="delivery"><Bike size={20} /> Delivery</TabsTrigger>
+          <TabsTrigger value="delivery" onClick={fetchFoodImages}><Bike size={20} /> Delivery</TabsTrigger>
         </TabsList>
 
         {/* Dining Out */}
-        <TabsContent value="dining" className="p-24">
-          {foodImages.length > 0 && (
-            <div className="mb-6">
-              <h2 className="text-xl font-bold mb-2">Related Food Images</h2>
-              <div className="grid grid-cols-3 gap-2">
-                {foodImages.map((img) => (
-                  <img key={img.link} src={img.link} alt="" className="h-24 object-cover rounded" />
-                ))}
-              </div>
-            </div>
-          )}
+        <TabsContent value="dining" className="p-12">
           {restaurants.length === 0 ? (
             <p className="text-center text-gray-500">No restaurants found. Try searching!</p>
           ) : (
@@ -502,16 +476,16 @@ export default function ChatBotPage() {
         </TabsContent>
 
         {/* Delivery */}
-        <TabsContent value="delivery" className="p-24">
-          {foodImages.length === 0 ? (
-            <p className="text-center text-gray-500">No food images found. Try searching!</p>
+        <TabsContent value="delivery" className="p-12">
+          {restaurants.length === 0 && foodImages.length === 0 ? (
+            <p className="text-center text-gray-500">No delivery options found. Try searching!</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {foodImages.map((img, idx) => {
-                const restaurant = restaurants[idx] || {};
-                const id = img.link;
+              {restaurants.map((restaurant, idx) => {
+                const image = idx < foodImages.length ? foodImages[idx] : null;
+                const id = restaurant.place_id || `delivery-${idx}`;
                 const quantity = quantities[id] || 0;
-                const name = restaurant.name || "Food Option";
+                const name = restaurant.name || `Delivery Option ${idx + 1}`;
                 const distance =
                   userLocation && restaurant.geometry?.location
                     ? calculateDistance(
@@ -523,7 +497,19 @@ export default function ChatBotPage() {
                     : null;
                 return (
                   <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
-                    <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
+                    {image ? (
+                      <img src={image.link} alt={name} className="w-full h-36 object-cover" />
+                    ) : restaurant.photos?.length > 0 ? (
+                      <img
+                        src={getPhotoUrl(restaurant.photos[0].photo_reference)}
+                        alt={name}
+                        className="w-full h-36 object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-36 bg-gray-200 flex items-center justify-center">
+                        No Image
+                      </div>
+                    )}
                     <CardContent className="pt-3 space-y-2">
                       <h2 className="text-md font-semibold">{name}</h2>
                       <p className="text-yellow-600 flex items-center">
@@ -557,7 +543,7 @@ export default function ChatBotPage() {
                       </div>
                       <Button
                         size="sm"
-                        onClick={() => addToCart(id, name, quantity, "delivery", img.link)}
+                        onClick={() => addToCart(id, name, quantity, "delivery", image?.link || restaurant.photos?.[0]?.photo_reference ? getPhotoUrl(restaurant.photos[0].photo_reference) : undefined)}
                       >
                         Add to Cart
                       </Button>
