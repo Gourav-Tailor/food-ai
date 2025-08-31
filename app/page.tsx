@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
 import {
@@ -36,6 +36,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog";
+import { VoiceIndicator } from "@/components/ui/voice-indicator";
 
 const containerStyle = {
   width: "100%",
@@ -67,6 +68,14 @@ export default function ChatBotPage() {
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
   });
 
+  // --- TTS Helper ---
+  const speak = (text: string) => {
+    if (typeof window === "undefined") return;
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    window.speechSynthesis.speak(utterance);
+  };
+
   // --- Voice Recognition ---
   const handleVoiceInput = () => {
     if (typeof window === "undefined") return;
@@ -87,16 +96,55 @@ export default function ChatBotPage() {
 
       recognitionRef.current.onresult = (event: any) => {
         const transcript = event.results[0][0].transcript;
-        setUserInput((prev) => prev + " " + transcript);
+        setUserInput(transcript); // Overwrite with new input
+        handleParse();
       };
 
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
+      recognitionRef.current.onresult = async (event: any) => {
+        const transcript = event.results[0][0].transcript;
         setIsListening(false);
+
+        // Generate conversational summary dynamically
+        try {
+          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                { role: "system", content: "You are a conversational AI. Summarize the user's spoken query in 1 line." },
+                { role: "user", content: transcript },
+              ],
+              temperature: 0.2,
+            }),
+          });
+          const completion = await response.json();
+          const summary = completion.choices[0].message.content;
+
+          // Update input and speak
+          setUserInput(summary);
+          speak(`Got it. Searching for ${summary}`);
+
+          // Trigger parse + fetch
+          handleParse();
+        } catch (err) {
+          console.error("Conversation error:", err);
+          setUserInput(transcript);
+          speak("Searching with what I understood from your speech.");
+          handleParse();
+        }
       };
+
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
+        if (userInput) {
+          speak(`Okay, searching for ${userInput}. Let me find some options for you.`);
+          handleParse();
+        }
       };
     }
 
@@ -104,6 +152,8 @@ export default function ChatBotPage() {
       recognitionRef.current.stop();
       setIsListening(false);
     } else {
+      speak("I'm listening. Go ahead.");
+      setUserInput(""); // Clear previous input
       recognitionRef.current.start();
       setIsListening(true);
     }
@@ -144,14 +194,13 @@ export default function ChatBotPage() {
   };
 
   // --- API Calls ---
-  const fetchRestaurants = async () => {
-    if (!userLocation) return alert("Set location first");
+  const fetchRestaurants = async (currentLocation: { lat: number; lng: number }) => {
     setLoading(true);
 
     // Reverse geocode
     const geoRes = await axios.get("https://maps.googleapis.com/maps/api/geocode/json", {
       params: {
-        latlng: `${userLocation.lat},${userLocation.lng}`,
+        latlng: `${currentLocation.lat},${currentLocation.lng}`,
         key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
       },
     });
@@ -161,19 +210,21 @@ export default function ChatBotPage() {
 
     const res = await axios.get("/api/restaurants", {
       params: {
-        lat: userLocation.lat,
-        lng: userLocation.lng,
+        lat: currentLocation.lat,
+        lng: currentLocation.lng,
         keyword: keyword || undefined,
         radius: radius || 1500,
       },
     });
 
-    setRestaurants(res.data.results || []);
+    const fetchedRestaurants = res.data.results || [];
+    setRestaurants(fetchedRestaurants);
     setLoading(false);
+    return fetchedRestaurants;
   };
 
   const fetchFoodImages = async () => {
-    if (!keyword) return;
+    if (!keyword) return [];
     setLoading(true);
     try {
       const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
@@ -185,16 +236,20 @@ export default function ChatBotPage() {
           num: 9,
         },
       });
-      setFoodImages(res.data.items || []);
+      const fetchedImages = res.data.items || [];
+      setFoodImages(fetchedImages);
+      setLoading(false);
+      return fetchedImages;
     } catch (err) {
       console.error(err);
+      setLoading(false);
+      return [];
     }
-    setLoading(false);
   };
 
   const handleParse = async () => {
     try {
-      await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -206,7 +261,7 @@ export default function ChatBotPage() {
             {
               role: "system",
               content:
-                "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
+                "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). Parse the distance unit and convert to meters (e.g., 1 km = 1000, 500 m = 500). If not found, use defaults: keyword='', radius=1500.",
             },
             {
               role: "user",
@@ -216,20 +271,64 @@ export default function ChatBotPage() {
           response_format: { type: "json_object" },
           temperature: 0.1,
         }),
-      })
-        .then((response) => response.json())
-        .then((completion) => {
-          const parserJDData = JSON.parse(completion.choices[0].message.content);
-          setKeyword(parserJDData.keyword);
-          setRadius(parserJDData.radius);
-        });
+      });
+      const completion = await response.json();
+      const parsedData = JSON.parse(completion.choices[0].message.content);
+      setKeyword(parsedData.keyword);
+      setRadius(parsedData.radius);
 
-      await fetchRestaurants();
-      await fetchFoodImages();
+      // Handle location
+      let currentLocation = userLocation;
+      if (!currentLocation) {
+        speak("I need your location to find nearby places. Trying to get your current location automatically.");
+        try {
+          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject);
+          });
+          currentLocation = {
+            lat: position.coords.latitude,
+            lng: position.coords.longitude,
+          };
+          setUserLocation(currentLocation);
+          speak("Location acquired. Proceeding with search.");
+        } catch (err) {
+          speak("Unable to get your location automatically. Please set it manually on the map.");
+          setShowMap(true);
+          // Wait for map to close and location to be set
+          await new Promise((resolve) => {
+            const interval = setInterval(() => {
+              if (!showMap && userLocation) {
+                clearInterval(interval);
+                resolve(null);
+              }
+            }, 500);
+          });
+          currentLocation = userLocation;
+          if (!currentLocation) {
+            speak("Location not set. Search cancelled.");
+            return;
+          }
+        }
+      }
+
+      const fetchedRestaurants = await fetchRestaurants(currentLocation!);
+      const fetchedFoodImages = await fetchFoodImages();
+
+      speak(
+        `Search complete. I found ${fetchedRestaurants.length} restaurants for ${parsedData.keyword} within ${parsedData.radius / 1000} km. Check the dining tab for details and delivery tab for options.`
+      );
     } catch (err: any) {
       console.error("Frontend error:", err.response?.data || err.message);
+      speak("Sorry, there was an error processing your request.");
     }
   };
+
+  // Monitor showMap to detect when user confirms location
+  useEffect(() => {
+    if (!showMap && userLocation) {
+      // If needed, can trigger search here, but since we await in handleParse, it's handled
+    }
+  }, [showMap, userLocation]);
 
   // --- UI ---
   return (
@@ -237,12 +336,12 @@ export default function ChatBotPage() {
       {/* 🔹 Search Toolbar */}
       <div className="bg-white p-4 flex items-center gap-3 shadow-sm">
         <img src="/logo.png" alt="Logo" className="w-12 h-12" />
-        <Input
+        {/* <Input
           placeholder="Search... e.g. 'pizza within 2 km'"
           value={userInput}
           onChange={(e) => setUserInput(e.target.value)}
           className="flex-1"
-        />
+        /> */}
         <Button
           variant={isListening ? "destructive" : "secondary"}
           size="icon"
@@ -253,9 +352,10 @@ export default function ChatBotPage() {
         <Button variant="secondary" size="icon" onClick={() => setShowMap(true)}>
           <MapPin size={20} />
         </Button>
-        <Button onClick={handleParse}>
+        {/* <Button onClick={handleParse}>
           <Search size={20} className="mr-1" /> Search
-        </Button>
+        </Button> */}
+        <VoiceIndicator isActive={isListening} />
       </div>
 
       {/* 🔹 Tabs */}
@@ -328,7 +428,7 @@ export default function ChatBotPage() {
                 <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
                   <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
                   <CardContent className="pt-3">
-                    <h2 className="text-md font-semibold">{restaurants[idx]?.name}</h2>
+                    <h2 className="text-md font-semibold">{restaurants[idx]?.name || "Food Option"}</h2>
                     <p className="text-yellow-600 flex items-center">
                       <Star size={16} className="mr-1" />
                       {restaurants[idx]?.rating || "N/A"} ({restaurants[idx]?.user_ratings_total || 0})
