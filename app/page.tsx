@@ -100,10 +100,44 @@ export default function ChatBotPage() {
         handleParse();
       };
 
-      recognitionRef.current.onerror = (event: any) => {
-        console.error("Speech recognition error:", event.error);
+      recognitionRef.current.onresult = async (event: any) => {
+        const transcript = event.results[0][0].transcript;
         setIsListening(false);
+
+        // Generate conversational summary dynamically
+        try {
+          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
+            },
+            body: JSON.stringify({
+              model: "llama-3.1-8b-instant",
+              messages: [
+                { role: "system", content: "You are a conversational AI. Summarize the user's spoken query in 1 line." },
+                { role: "user", content: transcript },
+              ],
+              temperature: 0.2,
+            }),
+          });
+          const completion = await response.json();
+          const summary = completion.choices[0].message.content;
+
+          // Update input and speak
+          setUserInput(summary);
+          speak(`Got it. Searching for ${summary}`);
+
+          // Trigger parse + fetch
+          handleParse();
+        } catch (err) {
+          console.error("Conversation error:", err);
+          setUserInput(transcript);
+          speak("Searching with what I understood from your speech.");
+          handleParse();
+        }
       };
+
 
       recognitionRef.current.onend = () => {
         setIsListening(false);
