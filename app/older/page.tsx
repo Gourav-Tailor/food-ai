@@ -12,8 +12,6 @@ import {
   Ruler,
   HomeIcon,
   Bike,
-  Menu,
-  Banknote,
 } from "lucide-react";
 
 // ✅ shadcn/ui components
@@ -56,26 +54,18 @@ export default function ChatBotPage() {
 
   const [keyword, setKeyword] = useState("");
   const [radius, setRadius] = useState(1500);
-  const [menu, setMenu] = useState([]);
   const [userInput, setUserInput] = useState("");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [userAddress, setUserAddress] = useState<string>("");
   const [showMap, setShowMap] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [activeTab, setActiveTab] = useState<"restaurant" | "menu">("restaurant");
+  const [activeTab, setActiveTab] = useState<"dining" | "delivery">("dining");
 
   const recognitionRef = useRef<any>(null);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
   });
-
-  const speak = (text: string) => {
-    if (typeof window === "undefined") return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    window.speechSynthesis.speak(utterance);
-  };
 
   // --- Voice Recognition ---
   const handleVoiceInput = () => {
@@ -188,12 +178,10 @@ export default function ChatBotPage() {
     try {
       const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
         params: {
-          q: `${keyword} food menu`,
+          q: keyword + " food",
           cx: process.env.NEXT_PUBLIC_GOOGLE_SEARCH_CX,
           key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
           searchType: "image",
-          imgType: "photo",
-          safe: "active", 
           num: 9,
         },
       });
@@ -218,32 +206,7 @@ export default function ChatBotPage() {
             {
               role: "system",
               content:
-                `
-                You are a parser and food variety generator.  
-                  Your task: Extract restaurant search parameters from user text and generate a rich list of food variants.  
-
-                  Rules:
-                  1. "keyword" → The main food or cuisine explicitly mentioned by the user (e.g., "pizza", "Chinese", "biryani").  
-                    - If multiple foods are mentioned, choose the most central one.  
-                    - If no clear food is mentioned, return keyword="".  
-
-                  2. "radius" → A number in meters if the user specifies a distance (e.g., "within 2 km" = 2000).  
-                    - Default = 1500.  
-
-                  3. "menu" → An array of **10-12 specific dish variants or popular worldwide dishes** that relate to the keyword.  
-                    - Include common global variations (e.g., for "pizza": ["Margherita Pizza", "Pepperoni Pizza", "BBQ Chicken Pizza", "Veggie Supreme Pizza"]).  
-                    - If the user explicitly mentions dish names, include them first in the array.  
-                    - If no variants are mentioned in the text, **still generate 10–20 globally popular dish variants** for the keyword.  
-                    - If keyword="", then menu=[].  
-
-                  Output must strictly be in JSON format only:  
-                  {
-                    "keyword": string,
-                    "radius": number,
-                    "menu": array of strings
-                  }
-
-                `,
+                "You are a parser. Extract restaurant search parameters from user text. Output JSON with fields: keyword (string), radius (number in meters). If not found, use defaults: keyword='', radius=1500.",
             },
             {
               role: "user",
@@ -259,8 +222,6 @@ export default function ChatBotPage() {
           const parserJDData = JSON.parse(completion.choices[0].message.content);
           setKeyword(parserJDData.keyword);
           setRadius(parserJDData.radius);
-          setMenu(parserJDData.menu);
-          console.log(parserJDData);
         });
 
       await fetchRestaurants();
@@ -299,14 +260,13 @@ export default function ChatBotPage() {
 
       {/* 🔹 Tabs */}
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 items-center">
-        <TabsList className="w-full text-3xl font-bold grid grid-cols-3 sticky top-0 bg-white z-10 shadow">
-          <TabsTrigger value="restaurant"><HomeIcon size={20} /> Select Restaurant</TabsTrigger>
-          <TabsTrigger value="menu"><Menu size={20} /> Choose Menu & Customize</TabsTrigger>
-          <TabsTrigger value="checkout"><Banknote size={20} /> Review & Checkout</TabsTrigger>
+        <TabsList className="w-1/2 text-3xl font-bold grid grid-cols-2 sticky top-0 bg-white z-10 shadow">
+          <TabsTrigger value="dining"><HomeIcon size={20} /> Dining Out</TabsTrigger>
+          <TabsTrigger value="delivery"><Bike size={20} /> Delivery</TabsTrigger>
         </TabsList>
 
         {/* Dining Out */}
-        <TabsContent value="restaurant" className="p-24">
+        <TabsContent value="dining" className="p-24">
           {restaurants.length === 0 ? (
             <p className="text-center text-gray-500">No restaurants found. Try searching!</p>
           ) : (
@@ -359,7 +319,7 @@ export default function ChatBotPage() {
         </TabsContent>
 
         {/* Delivery */}
-        <TabsContent value="menu" className="p-24">
+        <TabsContent value="delivery" className="p-24">
           {foodImages.length === 0 ? (
             <p className="text-center text-gray-500">No food images found. Try searching!</p>
           ) : (
@@ -368,7 +328,23 @@ export default function ChatBotPage() {
                 <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
                   <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
                   <CardContent className="pt-3">
-                    <h2 className="text-md font-semibold">{menu[idx]}</h2>
+                    <h2 className="text-md font-semibold">{restaurants[idx]?.name}</h2>
+                    <p className="text-yellow-600 flex items-center">
+                      <Star size={16} className="mr-1" />
+                      {restaurants[idx]?.rating || "N/A"} ({restaurants[idx]?.user_ratings_total || 0})
+                    </p>
+                    {userLocation && restaurants[idx]?.geometry?.location && (
+                      <p className="text-sm text-gray-600 flex items-center">
+                        <Ruler size={16} className="mr-1" />
+                        {calculateDistance(
+                          userLocation.lat,
+                          userLocation.lng,
+                          restaurants[idx].geometry.location.lat,
+                          restaurants[idx].geometry.location.lng
+                        )}{" "}
+                        km
+                      </p>
+                    )}
                   </CardContent>
                 </Card>
               ))}
