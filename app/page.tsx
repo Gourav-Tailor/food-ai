@@ -12,8 +12,11 @@ import {
   Ruler,
   HomeIcon,
   Bike,
-  Menu,
+  Menu as MenuIcon,
   Banknote,
+  Plus,
+  Minus,
+  Trash2,
 } from "lucide-react";
 
 // ✅ shadcn/ui components
@@ -56,19 +59,22 @@ export default function ChatBotPage() {
 
   const [keyword, setKeyword] = useState("");
   const [radius, setRadius] = useState(1500);
-  const [menu, setMenu] = useState([]);
+  const [menu, setMenu] = useState<string[]>([]);
   const [userInput, setUserInput] = useState("");
   const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
   const [userAddress, setUserAddress] = useState<string>("");
   const [showMap, setShowMap] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [activeTab, setActiveTab] = useState<"restaurant" | "menu">("restaurant");
+  const [activeTab, setActiveTab] = useState<"restaurant" | "menu" | "checkout">("restaurant");
 
   const recognitionRef = useRef<any>(null);
 
   const { isLoaded } = useJsApiLoader({
     googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
   });
+
+  const [selectedRestaurant, setSelectedRestaurant] = useState<any | null>(null);
+  const [cart, setCart] = useState<any[]>([]);
 
   const speak = (text: string) => {
     if (typeof window === "undefined") return;
@@ -193,7 +199,7 @@ export default function ChatBotPage() {
           key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
           searchType: "image",
           imgType: "photo",
-          safe: "active", 
+          safe: "active",
           num: 9,
         },
       });
@@ -270,6 +276,48 @@ export default function ChatBotPage() {
     }
   };
 
+  // --- Cart helpers ---
+  const addToCart = (item: string, img?: string) => {
+    if (!selectedRestaurant) {
+      alert("Please select a restaurant first!");
+      return;
+    }
+    setCart((prev) => {
+      const existing = prev.find((c) => c.item === item && c.restaurantId === selectedRestaurant.place_id);
+      if (existing) {
+        return prev.map((c) =>
+          c.item === item && c.restaurantId === selectedRestaurant.place_id
+            ? { ...c, qty: c.qty + 1 }
+            : c
+        );
+      }
+      return [
+        ...prev,
+        {
+          restaurantId: selectedRestaurant.place_id,
+          restaurantName: selectedRestaurant.name,
+          item,
+          img,
+          qty: 1,
+        },
+      ];
+    });
+  };
+
+  const updateQty = (item: string, delta: number) => {
+    setCart((prev) =>
+      prev
+        .map((c) =>
+          c.item === item ? { ...c, qty: Math.max(1, c.qty + delta) } : c
+        )
+        .filter((c) => c.qty > 0)
+    );
+  };
+
+  const removeFromCart = (item: string) => {
+    setCart((prev) => prev.filter((c) => c.item !== item));
+  };
+
   // --- UI ---
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col">
@@ -301,7 +349,7 @@ export default function ChatBotPage() {
       <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 items-center">
         <TabsList className="w-full text-3xl font-bold grid grid-cols-3 sticky top-0 bg-white z-10 shadow">
           <TabsTrigger value="restaurant"><HomeIcon size={20} /> Select Restaurant</TabsTrigger>
-          <TabsTrigger value="menu"><Menu size={20} /> Choose Menu & Customize</TabsTrigger>
+          <TabsTrigger value="menu"><MenuIcon size={20} /> Choose Menu & Customize</TabsTrigger>
           <TabsTrigger value="checkout"><Banknote size={20} /> Review & Checkout</TabsTrigger>
         </TabsList>
 
@@ -322,7 +370,11 @@ export default function ChatBotPage() {
                       )
                     : null;
                 return (
-                  <Card key={idx} className="overflow-hidden rounded-2xl">
+                  <Card
+                    key={idx}
+                    className={`overflow-hidden rounded-2xl cursor-pointer ${selectedRestaurant?.place_id === r.place_id ? "ring-2 ring-green-400" : ""}`}
+                    onClick={() => { setSelectedRestaurant(r); setActiveTab("menu"); }}
+                  >
                     {r.photos?.length > 0 ? (
                       <img
                         src={getPhotoUrl(r.photos[0].photo_reference)}
@@ -360,18 +412,58 @@ export default function ChatBotPage() {
 
         {/* Delivery */}
         <TabsContent value="menu" className="p-24">
-          {foodImages.length === 0 ? (
+          {!selectedRestaurant ? (
+            <p className="text-center text-gray-500">Please select a restaurant first.</p>
+          ) : foodImages.length === 0 ? (
             <p className="text-center text-gray-500">No food images found. Try searching!</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
               {foodImages.map((img, idx) => (
                 <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
                   <img src={img.link} alt={keyword} className="w-full h-36 object-cover" />
-                  <CardContent className="pt-3">
+                  <CardContent className="pt-3 flex justify-between items-center">
                     <h2 className="text-md font-semibold">{menu[idx]}</h2>
+                    <Button size="sm" variant="secondary" onClick={() => addToCart(menu[idx], img.link)}>
+                      <Plus size={16} /> Add
+                    </Button>
                   </CardContent>
                 </Card>
               ))}
+            </div>
+          )}
+        </TabsContent>
+
+        {/* Checkout */}
+        <TabsContent value="checkout" className="p-24">
+          {cart.length === 0 ? (
+            <p className="text-center text-gray-500">Your cart is empty.</p>
+          ) : (
+            <div className="space-y-4">
+              <h2 className="text-xl font-bold">Order Summary</h2>
+              <div className="divide-y">
+                {cart.map((c, idx) => (
+                  <div key={idx} className="flex items-center gap-4 py-3">
+                    <img src={c.img} alt={c.item} className="w-16 h-16 object-cover rounded-lg" />
+                    <div className="flex-1">
+                      <p className="font-semibold">{c.item}</p>
+                      <p className="text-sm text-gray-500">{c.restaurantName}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <Button size="sm" variant="ghost" onClick={() => updateQty(c.item, -1)}>
+                        <Minus size={14} />
+                      </Button>
+                      <span>{c.qty}</span>
+                      <Button size="sm" variant="ghost" onClick={() => updateQty(c.item, 1)}>
+                        <Plus size={14} />
+                      </Button>
+                      <Button size="sm" variant="destructive" onClick={() => removeFromCart(c.item)}>
+                        <Trash2 size={14} />
+                      </Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <Button className="w-full">Proceed to Payment</Button>
             </div>
           )}
         </TabsContent>
