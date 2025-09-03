@@ -14,6 +14,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetTrigger, SheetFooter } from "@/components/ui/sheet";
+import { restaurants } from "@/data/restaurants";
 
 // ---------- Types ----------
 
@@ -22,16 +23,22 @@ type Extra = {
   name: string;
   price: number;
 };
+interface Option {
+  id: string;
+  label: string;
+  price: number;
+  spice?: string;
+}
 
-type OptionSet = {
+interface OptionSet {
   id: string;
   label: string;
   type: "radio" | "checkbox";
   required?: boolean;
-  options: Array<{ id: string; label: string; price: number } & ({ spice?: never } | { spice?: "mild" | "medium" | "hot" })>;
-};
+  options: Option[];
+}
 
-type MenuItem = {
+interface MenuItem {
   id: string;
   name: string;
   description: string;
@@ -40,20 +47,19 @@ type MenuItem = {
   calories?: number;
   category: string;
   popular?: boolean;
-  optionSets: OptionSet[]; // size, spice, addons, etc
-};
-
-type Restaurant = {
+  optionSets: OptionSet[];
+}
+interface Restaurant {
   id: string;
   name: string;
   cuisine: string[];
   distanceKm: number;
-  priceLevel: 1 | 2 | 3 | 4;
+  priceLevel: number;
   rating: number;
   etaMin: number;
-  image?: string;
+  image: string;
   menu: MenuItem[];
-};
+}
 
 type ChosenOption = {
   optionSetId: string;
@@ -73,209 +79,6 @@ type CartLine = {
 };
 
 // ---------- Static Data ----------
-
-const restaurants: Restaurant[] = [
-  {
-    id: "r1",
-    name: "Bombay Spice Kitchen",
-    cuisine: ["Indian", "North Indian", "Biryani"],
-    distanceKm: 1.2,
-    priceLevel: 2,
-    rating: 4.5,
-    etaMin: 28,
-    image: "https://images.unsplash.com/photo-1598515213641-8a9b7351826e?q=80&w=1600&auto=format&fit=crop",
-    menu: [
-      {
-        id: "m1",
-        name: "Chicken Biryani",
-        description: "Aromatic basmati, tender chicken, saffron, and whole spices.",
-        basePrice: 240,
-        rating: 4.7,
-        calories: 780,
-        category: "Mains",
-        popular: true,
-        optionSets: [
-          {
-            id: "size",
-            label: "Portion Size",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "regular", label: "Regular", price: 0 },
-              { id: "large", label: "Large", price: 80 },
-              { id: "family", label: "Family Pack", price: 180 },
-            ],
-          },
-          {
-            id: "spice",
-            label: "Spice Level",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "mild", label: "Mild", price: 0, spice: "mild" },
-              { id: "medium", label: "Medium", price: 0, spice: "medium" },
-              { id: "hot", label: "Hot", price: 0, spice: "hot" },
-            ],
-          },
-          {
-            id: "addons",
-            label: "Add-ons",
-            type: "checkbox",
-            options: [
-              { id: "egg", label: "Boiled Egg", price: 20 },
-              { id: "raita", label: "Raita", price: 30 },
-              { id: "extra-chicken", label: "Extra Chicken", price: 90 },
-            ],
-          },
-        ],
-      },
-      {
-        id: "m2",
-        name: "Paneer Butter Masala",
-        description: "Creamy tomato gravy with cottage cheese cubes.",
-        basePrice: 220,
-        rating: 4.6,
-        calories: 560,
-        category: "Mains",
-        optionSets: [
-          {
-            id: "size",
-            label: "Portion Size",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "regular", label: "Regular", price: 0 },
-              { id: "large", label: "Large", price: 70 },
-            ],
-          },
-          {
-            id: "addons",
-            label: "Add-ons",
-            type: "checkbox",
-            options: [
-              { id: "butter-naan", label: "Butter Naan", price: 40 },
-              { id: "jeera-rice", label: "Jeera Rice", price: 60 },
-            ],
-          },
-        ],
-      },
-      {
-        id: "m3",
-        name: "Masala Chai",
-        description: "Spiced milk tea brewed fresh.",
-        basePrice: 40,
-        rating: 4.3,
-        category: "Beverages",
-        optionSets: [
-          {
-            id: "sweetness",
-            label: "Sweetness",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "regular", label: "Regular", price: 0 },
-              { id: "less", label: "Less Sugar", price: 0 },
-              { id: "more", label: "Extra Sweet", price: 0 },
-            ],
-          },
-          {
-            id: "addons",
-            label: "Add-ons",
-            type: "checkbox",
-            options: [
-              { id: "ginger", label: "Ginger", price: 5 },
-              { id: "elaichi", label: "Cardamom", price: 7 },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-  {
-    id: "r2",
-    name: "Kyoto Street Ramen",
-    cuisine: ["Japanese", "Ramen"],
-    distanceKm: 2.1,
-    priceLevel: 3,
-    rating: 4.4,
-    etaMin: 35,
-    image: "https://images.unsplash.com/photo-1544025162-d76694265947?q=80&w=1600&auto=format&fit=crop",
-    menu: [
-      {
-        id: "m4",
-        name: "Tonkotsu Ramen",
-        description: "Pork broth, chashu, egg, noodles, scallions.",
-        basePrice: 380,
-        rating: 4.8,
-        category: "Bowls",
-        optionSets: [
-          {
-            id: "size",
-            label: "Bowl Size",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "standard", label: "Standard", price: 0 },
-              { id: "mega", label: "Mega", price: 120 },
-            ],
-          },
-          {
-            id: "spice",
-            label: "Spice Level",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "none", label: "No Spice", price: 0 },
-              { id: "medium", label: "Medium", price: 0 },
-              { id: "fiery", label: "Fiery", price: 0 },
-            ],
-          },
-          {
-            id: "addons",
-            label: "Toppings",
-            type: "checkbox",
-            options: [
-              { id: "nori", label: "Nori", price: 20 },
-              { id: "corn", label: "Corn", price: 20 },
-              { id: "extra-egg", label: "Extra Egg", price: 30 },
-            ],
-          },
-        ],
-      },
-      {
-        id: "m5",
-        name: "Matcha Latte",
-        description: "Creamy matcha with milk.",
-        basePrice: 160,
-        rating: 4.2,
-        category: "Beverages",
-        optionSets: [
-          {
-            id: "milk",
-            label: "Milk Type",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "dairy", label: "Dairy", price: 0 },
-              { id: "almond", label: "Almond", price: 15 },
-              { id: "oat", label: "Oat", price: 20 },
-            ],
-          },
-          {
-            id: "temp",
-            label: "Temperature",
-            type: "radio",
-            required: true,
-            options: [
-              { id: "hot", label: "Hot", price: 0 },
-              { id: "iced", label: "Iced", price: 0 },
-            ],
-          },
-        ],
-      },
-    ],
-  },
-];
 
 // ---------- Helpers ----------
 
