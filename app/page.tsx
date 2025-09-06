@@ -90,32 +90,42 @@ export default function VoiceFoodOrderingApp() {
               {
                 role: "system",
                 content: `
-                 You are a strict command parser for a voice-based food ordering assistant.
-                 Return JSON ONLY. No extra text, no explanations.
+                    You are a strict command parser for a voice-based food ordering assistant.
+                    Return JSON ONLY. No extra text, no explanations.
 
-                 Rules (normalize everything to lower-case, ignore filler words like "um", "please", "I want", etc.):
-                 - Step 1: Look for intent to select order type. Output "dine in" if user mentions dining in, eating here, or similar. Output "takeaway" if user mentions take away, pickup, to go, or similar.
-                 - Step 2: Look for contact info. Output "guest" if user says guest, anonymous, no number, or similar. Output "number is <digits>" if user provides a phone number (extract only the digits, e.g., from "my number is 123-456-7890" extract "1234567890").
-                 - Step 3: Look for restaurant selection. Output "restaurant <name>" where <name> is the closest matching restaurant name (fuzzy match allowed, e.g., "rajasthani" for "Rajasthani Thali"). Include the full or partial name for downstream matching. Available restaurants: ${restaurants.map(r => r.name).join(', ')}.
-                 - Step 4: Look for cart actions. Output "add <item>" where <item> is the closest matching menu item name (fuzzy match, e.g., "dal baati" for "Dal Baati Churma"). Output "remove <item>" similarly for removals. Output "checkout" for finishing, paying, done, or similar. Available menu items: ${menuItems.map(m => m.name).join(', ')}.
-                 - Step 5: Output "new order" if user wants to start over, reset, or new.
+                    Rules (normalize everything to lower-case, ignore filler words like "um", "please", "I want", etc.):
+                    - Step 1: Look for intent to select order type. Output "dine in" if user mentions dining in, eating here, or similar. Output "takeaway" if user mentions take away, pickup, to go, or similar.
+                    - Step 2: Look for contact info. Output "guest" if user says guest, anonymous, no number, or similar. Output "number is <digits>" if user provides a phone number (extract only the digits).
+                    - Step 3: Look for restaurant selection. Output "restaurant <name>" where <name> is the closest matching restaurant name (fuzzy match allowed). Available restaurants: ${restaurants.map(r => r.name).join(', ')}.
+                    - Step 4: Look for cart actions.
+                      • Output "add <quantity> <item>" where <quantity> is the number of items if spoken, otherwise 1.  
+                        Example: "add 3 gulab jamun" → { "command": "add 3 gulab jamun" }  
+                        Example: "add gulab jamun" → { "command": "add 1 gulab jamun" }  
+                      • Output "remove <quantity> <item>" similarly for removals.  
+                        Example: "remove 2 dal baati" → { "command": "remove 2 dal baati" }  
+                        Example: "remove gulab jamun" → { "command": "remove 1 gulab jamun" }  
+                      • Output "checkout" for finishing, paying, done, or similar.  
+                      Available menu items: ${menuItems.map(m => m.name).join(', ')}.
+                    - Step 5: Output "new order" if user wants to start over, reset, or new.
 
-                 Examples:
-                 - User: "I'd like to dine in please" → { "command": "dine in" }
-                 - User: "Take out" → { "command": "takeaway" }
-                 - User: "I'm a guest" → { "command": "guest" }
-                 - User: "My phone is five five five one two three four" → { "command": "number is 5551234" }
-                 - User: "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
-                 - User: "Pick the marwar one" → { "command": "restaurant marwar delight" }
-                 - User: "Add gulab jamun and dal baati" → { "command": "add gulab jamun" }
-                 - User: "Remove the namkeen" → { "command": "remove namkeen sev" }
-                 - User: "I'm done, checkout now" → { "command": "checkout" }
-                 - User: "Start a new order" → { "command": "new order" }
+                    Examples:
+                    - User: "I'd like to dine in please" → { "command": "dine in" }
+                    - User: "Take out" → { "command": "takeaway" }
+                    - User: "I'm a guest" → { "command": "guest" }
+                    - User: "My phone is five five five one two three four" → { "command": "number is 5551234" }
+                    - User: "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
+                    - User: "Pick the marwar one" → { "command": "restaurant marwar delight" }
+                    - User: "Add gulab jamun and dal baati" → { "command": "add 1 gulab jamun" } and { "command": "add 1 dal baati churma" }
+                    - User: "Add 3 gulab jamun" → { "command": "add 3 gulab jamun" }
+                    - User: "Remove the namkeen" → { "command": "remove 1 namkeen sev" }
+                    - User: "Remove 2 gulab jamun" → { "command": "remove 2 gulab jamun" }
+                    - User: "I'm done, checkout now" → { "command": "checkout" }
+                    - User: "Start a new order" → { "command": "new order" }
 
-                 If you cannot parse confidently or it doesn't match the current step, return: { "command": "unknown" }
+                    If you cannot parse confidently or it doesn't match the current step, return: { "command": "unknown" }
 
-                 ALWAYS output exactly one JSON object with a "command" field.
-                `,
+                    ALWAYS output exactly one JSON object with a "command" field.
+                    `,
               },
               {
                 role: "user",
@@ -217,20 +227,39 @@ export default function VoiceFoodOrderingApp() {
     } else if (cmd.includes("add")) {
       const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
       if (item) {
-        setOrder((prev) => ({ ...prev, items: [...prev.items, item] }));
-        speak(`${item.name} has been added to your order.`);
+        // extract quantity (default = 1)
+        const match = cmd.match(/(\d+)/);
+        const qty = match ? parseInt(match[1], 10) : 1;
+
+        setOrder((prev) => ({
+          ...prev,
+          items: [...prev.items, ...Array(qty).fill(item)],
+        }));
+        speak(`${qty} ${item.name} added to your order.`);
       }
     } else if (cmd.includes("remove")) {
       const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
       if (item) {
-        setOrder((prev) => ({
-          ...prev,
-          items: prev.items.filter((i) => i.id !== item.id),
-        }));
-        speak(`${item.name} has been removed from your order.`);
+        // extract quantity (default = 1)
+        const match = cmd.match(/(\d+)/);
+        const qty = match ? parseInt(match[1], 10) : 1;
+
+        setOrder((prev) => {
+          let removed = 0;
+          const newItems = prev.items.filter((i) => {
+            if (i.id === item.id && removed < qty) {
+              removed++;
+              return false;
+            }
+            return true;
+          });
+          return { ...prev, items: newItems };
+        });
+        speak(`${qty} ${item.name} removed from your order.`);
       }
     }
-  } else if (step === 5) {
+  }
+ else if (step === 5) {
     if (cmd.includes("new order")) {
       setOrder({ type: "", contact: "", restaurant: null, items: [] });
       setStep(1);
