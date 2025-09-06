@@ -1,86 +1,59 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
-import axios from "axios";
-import { GoogleMap, Marker, useJsApiLoader } from "@react-google-maps/api";
-import {
-  Mic,
-  MapPin,
-  Search,
-  Star,
-  IndianRupee,
-  Ruler,
-  HomeIcon,
-  Bike,
-  ShoppingCart,
-} from "lucide-react";
-
-// ✅ shadcn/ui components
+import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
-import {
-  Card,
-  CardHeader,
-  CardContent,
-  CardTitle,
-} from "@/components/ui/card";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-} from "@/components/ui/dialog";
-import { VoiceIndicator } from "@/components/ui/voice-indicator";
-import { Badge } from "@/components/ui/badge";
+import { ShoppingCart, Phone, Home, Utensils, Store } from "lucide-react";
 
-const containerStyle = {
-  width: "100%",
-  height: "400px",
-};
-
-const defaultCenter = {
-  lat: 28.611707360891085,
-  lng: 77.22955188008568,
-};
-
-interface CartItem {
-  id: string;
+interface Restaurant {
+  id: number;
   name: string;
-  quantity: number;
-  type: "dining" | "delivery";
-  image?: string;
+  distance: string;
+  image: string;
+  menu: number[]; // <-- list of menu item ids available at this restaurant
 }
 
-export default function ChatBotPage() {
-  const [restaurants, setRestaurants] = useState<any[]>([]);
-  const [foodImages, setFoodImages] = useState<any[]>([]);
-  const [loading, setLoading] = useState(false);
+interface MenuItem {
+  id: number;
+  name: string;
+  image: string;
+}
 
-  const [keyword, setKeyword] = useState("");
-  const [radius, setRadius] = useState(1500);
-  const [userInput, setUserInput] = useState("");
-  const [userLocation, setUserLocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [userAddress, setUserAddress] = useState<string>("");
-  const [showMap, setShowMap] = useState(false);
-  const [isListening, setIsListening] = useState(false);
-  const [activeTab, setActiveTab] = useState<"dining" | "delivery">("dining");
+interface Order {
+  type: string;
+  contact: string;
+  restaurant: Restaurant | null;
+  items: MenuItem[];
+}
 
-  const [cart, setCart] = useState<CartItem[]>([]);
-  const [showCart, setShowCart] = useState(false);
-  const [quantities, setQuantities] = useState<Record<string, number>>({});
 
-  const recognitionRef = useRef<any>(null);
+const restaurants: Restaurant[] = [
+  { id: 1, name: "Rajasthani Thali", distance: "1.5 km", image: "/rajasthani-thali.jpg", menu: [1, 2, 3, 4, 7] },
+  { id: 2, name: "Marwar Delight", distance: "2.8 km", image: "/marwar-delight.jpg", menu: [1, 3, 5, 6, 8] },
+  { id: 3, name: "Desert Spice", distance: "3.2 km", image: "/desert-spice.jpg", menu: [2, 4, 6, 7, 9] },
+  { id: 4, name: "Jaipur Bhoj", distance: "4.0 km", image: "/jaipur-bhoj.jpg", menu: [1, 2, 5, 8, 9] },
+];
 
-  const { isLoaded } = useJsApiLoader({
-    googleMapsApiKey: process.env.NEXT_PUBLIC_GOOGLE_API_KEY || "",
-  });
+const menuItems: MenuItem[] = [
+  { id: 1, name: "Dal Baati Churma", image: "/dal-baati-churma.jpg" },
+  { id: 2, name: "Gatte ki Sabzi", image: "/gatte-ki-sabzi.jpg" },
+  { id: 3, name: "Ker Sangri", image: "/ker-sangri.jpg" },
+  { id: 4, name: "Bajre ki Roti", image: "/bajre-ki-roti.jpg" },
+  { id: 5, name: "Laal Maas", image: "/laal-maas.jpg" },
+  { id: 6, name: "Gulab Jamun", image: "/gulab-jamun.jpg" },
+  { id: 7, name: "Namkeen Sev", image: "/namkeen-sev.jpg" },
+  { id: 8, name: "Mawa Kachori", image: "/mawa-kachori.jpg" },
+  { id: 9, name: "Pyaaz Kachori", image: "/pyaaz-kachori.jpg" },
+];
+
+export default function VoiceFoodOrderingApp() {
+  const [step, setStep] = useState<number>(1);
+  const [transcript, setTranscript] = useState<string>("");
+  const [order, setOrder] = useState<Order>({ type: "", contact: "", restaurant: null, items: [] });
+  const [filteredRestaurants, setFilteredRestaurants] = useState<Restaurant[]>(restaurants);
+  const [parsedCommand, setParsedCommand] = useState<string>("");
+
 
   // --- TTS Helper ---
   const speak = (text: string) => {
@@ -90,539 +63,364 @@ export default function ChatBotPage() {
     window.speechSynthesis.speak(utterance);
   };
 
-  // --- Voice Recognition ---
-  const handleVoiceInput = () => {
-    if (typeof window === "undefined") return;
-
+  useEffect(() => {
     const SpeechRecognition =
       (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) return;
 
-    if (!SpeechRecognition) {
-      alert("Sorry, your browser does not support speech recognition.");
-      return;
-    }
+    const recognition = new SpeechRecognition();
+    recognition.continuous = true;
+    recognition.interimResults = false;
+    recognition.lang = "en-US";
 
-    if (!recognitionRef.current) {
-      recognitionRef.current = new SpeechRecognition();
-      recognitionRef.current.continuous = false;
-      recognitionRef.current.interimResults = false;
-      recognitionRef.current.lang = "en-US";
+    recognition.onresult = async (event: any) => {
+      try {
+        const last = event.results.length - 1;
+        const text = event.results[last][0].transcript.trim();
 
-      recognitionRef.current.onresult = async (event: any) => {
-        const transcript = event.results[0][0].transcript;
-        setIsListening(false);
+        const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
+          },
+          body: JSON.stringify({
+            model: "llama-3.3-70b-versatile",
+            messages: [
+              {
+                role: "system",
+                content: `
+                    You are a strict command parser for a voice-based food ordering assistant.
+                    Return JSON ONLY. No extra text, no explanations.
 
-        // Generate conversational summary dynamically
-        try {
-          const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-            method: "POST",
-            headers: {
-              "Content-Type": "application/json",
-              Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
-            },
-            body: JSON.stringify({
-              model: "llama-3.1-8b-instant",
-              messages: [
-                { role: "system", content: "You are a conversational AI. Summarize the user's spoken query in 1 line." },
-                { role: "user", content: transcript },
-              ],
-              temperature: 0.2,
-            }),
-          });
-          const completion = await response.json();
-          const summary = completion.choices[0].message.content;
+                    Rules (normalize everything to lower-case, ignore filler words like "um", "please", "I want", etc.):
+                    - Step 1: Look for intent to select order type. Output "dine in" if user mentions dining in, eating here, or similar. Output "takeaway" if user mentions take away, pickup, to go, or similar.
+                    - Step 2: Look for contact info. Output "guest" if user says guest, anonymous, no number, or similar. Output "number is <digits>" if user provides a phone number (extract only the digits).
+                    - Step 3: Look for restaurant selection. Output "restaurant <name>" where <name> is the closest matching restaurant name (fuzzy match allowed). Available restaurants: ${restaurants.map(r => r.name).join(', ')}.
+                    - Step 4: Look for cart actions.
+                      • Output "add <quantity> <item>" where <quantity> is the number of items if spoken, otherwise 1.  
+                        Example: "add 3 gulab jamun" → { "command": "add 3 gulab jamun" }  
+                        Example: "add gulab jamun" → { "command": "add 1 gulab jamun" }  
+                      • Output "remove <quantity> <item>" similarly for removals.  
+                        Example: "remove 2 dal baati" → { "command": "remove 2 dal baati" }  
+                        Example: "remove gulab jamun" → { "command": "remove 1 gulab jamun" }  
+                      • Output "checkout" for finishing, paying, done, or similar.  
+                      Available menu items: ${menuItems.map(m => m.name).join(', ')}.
+                    - Step 5: Output "new order" if user wants to start over, reset, or new.
 
-          // Update input and speak
-          setUserInput(summary);
-          speak(`Got it. Searching for ${summary}`);
+                    Examples:
+                    - User: "I'd like to dine in please" → { "command": "dine in" }
+                    - User: "Take out" → { "command": "takeaway" }
+                    - User: "I'm a guest" → { "command": "guest" }
+                    - User: "My phone is five five five one two three four" → { "command": "number is 5551234" }
+                    - User: "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
+                    - User: "Pick the marwar one" → { "command": "restaurant marwar delight" }
+                    - User: "Add gulab jamun and dal baati" → { "command": "add 1 gulab jamun" } and { "command": "add 1 dal baati churma" }
+                    - User: "Add 3 gulab jamun" → { "command": "add 3 gulab jamun" }
+                    - User: "Remove the namkeen" → { "command": "remove 1 namkeen sev" }
+                    - User: "Remove 2 gulab jamun" → { "command": "remove 2 gulab jamun" }
+                    - User: "I'm done, checkout now" → { "command": "checkout" }
+                    - User: "Start a new order" → { "command": "new order" }
 
-          // Trigger parse + fetch
-          handleParse();
-        } catch (err) {
-          console.error("Conversation error:", err);
-          setUserInput(transcript);
-          speak("Searching with what I understood from your speech.");
-          handleParse();
+                    If you cannot parse confidently or it doesn't match the current step, return: { "command": "unknown" }
+
+                    ALWAYS output exactly one JSON object with a "command" field.
+                    `,
+              },
+              {
+                role: "user",
+                content: `user said in step-${step}: ${text}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+          }),
+        });
+
+        const completion = await response.json();
+        const parserJDData = JSON.parse(completion.choices[0].message?.content || "{}");
+
+        if (parserJDData.command !== "unknown") {
+          handleVoiceCommand(parserJDData.command);
+          setParsedCommand(parserJDData.command);
+          setTranscript(text);
+        } else {
+          handleVoiceCommand(text);
+          setParsedCommand(text);
+          setTranscript(text);
         }
-      };
 
-      recognitionRef.current.onend = () => {
-        setIsListening(false);
-        if (userInput) {
-          speak(`Okay, searching for ${userInput}. Let me find some options for you.`);
-          handleParse();
-        }
-      };
+        console.log("Parsed Command:", parserJDData);
+      } catch (error) {
+        console.error("Error parsing voice input:", error);
+      }
+    };
+
+    recognition.start();
+
+    return () => recognition.stop();
+  }, [step]);
+
+  const handleVoiceCommand = (text: string) => {
+  const cmd = text.toLowerCase();
+  console.log("Transcript:", cmd);
+
+  if (step === 1) {
+    if (cmd.includes("in")) {
+      setOrder((prev) => ({ ...prev, type: "Dine In" }));
+      setStep(2);
+      speak("You selected dine in. Please say guest or tell me your number.");
+    } else if (cmd.includes("takeaway") || cmd.includes("take away")) {
+      setOrder((prev) => ({ ...prev, type: "Takeaway" }));
+      setStep(2);
+      speak("You selected takeaway. Please say guest or tell me your number.");
     }
+  } else if (step === 2) {
+    if (cmd.includes("guest")) {
+      setOrder((prev) => ({ ...prev, contact: "Guest" }));
+      setStep(3);
+      speak("Contact set as guest. Now, please choose a restaurant.");
+    } else if (cmd.includes("number is")) {
+      const num = cmd.split("number is")[1]?.trim();
+      setOrder((prev) => ({ ...prev, contact: num }));
+      setStep(3);
+      speak(`Your number is ${num}. Now, please choose a restaurant.`);
+    }
+  } else if (step === 3) {
+    // check if user directly said restaurant name
+    const restaurant = restaurants.find(
+      (r) => cmd.includes(r.name.toLowerCase()) || cmd.includes(r.id.toString())
+    );
 
-    if (isListening) {
-      recognitionRef.current.stop();
-      setIsListening(false);
+    if (restaurant) {
+      setOrder((prev) => ({ ...prev, restaurant }));
+      setStep(4);
+      speak(`You selected ${restaurant.name}. Now, say add followed by an item to add it to your order or say checkout to continue.`);
     } else {
-      speak("I'm listening. Go ahead.");
-      setUserInput(""); // Clear previous input
-      recognitionRef.current.start();
-      setIsListening(true);
-    }
-  };
-
-  // --- Helpers ---
-  const getPhotoUrl = (photoReference: string) =>
-    `https://maps.googleapis.com/maps/api/place/photo?maxwidth=400&photoreference=${photoReference}&key=${process.env.NEXT_PUBLIC_GOOGLE_API_KEY}`;
-
-  const getPriceRange = (priceLevel?: number): string => {
-    if (priceLevel === undefined) return "N/A";
-    switch (priceLevel) {
-      case 0:
-        return "Free";
-      case 1:
-        return "₹ (Inexpensive)";
-      case 2:
-        return "₹₹ (Moderate)";
-      case 3:
-        return "₹₹₹ (Expensive)";
-      case 4:
-        return "₹₹₹₹ (Very Expensive)";
-      default:
-        return "N/A";
-    }
-  };
-
-  const calculateDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
-    const toRad = (v: number) => (v * Math.PI) / 180;
-    const R = 6371;
-    const dLat = toRad(lat2 - lat1);
-    const dLon = toRad(lon2 - lon1);
-    const a =
-      Math.sin(dLat / 2) * Math.sin(dLat / 2) +
-      Math.cos(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.sin(dLon / 2) * Math.sin(dLon / 2);
-    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
-    return (R * c).toFixed(2);
-  };
-
-  // --- API Calls ---
-  const fetchRestaurants = async (currentLocation: { lat: number; lng: number }) => {
-    setLoading(true);
-
-    // Reverse geocode
-    const geoRes = await axios.get("https://maps.googleapis.com/maps/api/geocode/json", {
-      params: {
-        latlng: `${currentLocation.lat},${currentLocation.lng}`,
-        key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-      },
-    });
-    if (geoRes.data.results.length > 0) {
-      setUserAddress(geoRes.data.results[0].formatted_address);
-    }
-
-    const res = await axios.get("/api/restaurants", {
-      params: {
-        lat: currentLocation.lat,
-        lng: currentLocation.lng,
-        keyword: keyword || undefined,
-        radius: radius || 1500,
-      },
-    });
-
-    const fetchedRestaurants = res.data.results || [];
-    setRestaurants(fetchedRestaurants);
-    setLoading(false);
-    await fetchFoodImages();
-    return fetchedRestaurants;
-  };
-
-  const fetchFoodImages = async () => {
-    // if (!keyword) return [];
-    setLoading(true);
-    try {
-      const res = await axios.get("https://www.googleapis.com/customsearch/v1", {
-        params: {
-          q: keyword + " food",
-          cx: process.env.NEXT_PUBLIC_GOOGLE_SEARCH_CX,
-          key: process.env.NEXT_PUBLIC_GOOGLE_API_KEY,
-          searchType: "image",
-          num: 9,
-        },
-      });
-      const fetchedImages = res.data.items || [];
-      setFoodImages(fetchedImages);
-      setLoading(false);
-      return fetchedImages;
-    } catch (err) {
-      console.error(err);
-      setLoading(false);
-      return [];
-    }
-  };
-
-  const addToCart = (id: string, name: string, quantity: number, type: "dining" | "delivery", image?: string) => {
-    if (quantity <= 0) return;
-    setCart((prev) => {
-      const exist = prev.find((i) => i.id === id);
-      if (exist) {
-        return prev.map((i) =>
-          i.id === id ? { ...i, quantity: i.quantity + quantity } : i
-        );
-      } else {
-        return [...prev, { id, name, quantity, type, image }];
-      }
-    });
-    setQuantities((prev) => ({ ...prev, [id]: 0 })); // reset quantity
-    speak(`Added ${quantity} of ${name} to cart.`);
-  };
-
-  const handleParse = async () => {
-    try {
-      const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${process.env.NEXT_PUBLIC_GROQ_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: "llama-3.1-8b-instant",
-          messages: [
-            {
-              role: "system",
-              content:
-                "You are a parser. Extract parameters from user text. If the user is searching for restaurants or food, output JSON {type: 'search', keyword: string, radius: number in meters}. If the user is adding to cart like 'add 2 pizzas' or 'I want 3 burgers', output {type: 'add', item: string, quantity: number}. Parse distance unit and convert to meters (e.g., 1 km = 1000, 500 m = 500). Defaults: keyword='', radius=1500, quantity=1.",
-            },
-            {
-              role: "user",
-              content: `${userInput}`,
-            },
-          ],
-          response_format: { type: "json_object" },
-          temperature: 0.1,
-        }),
-      });
-      const completion = await response.json();
-      const parsedData = JSON.parse(completion.choices[0].message.content);
-
-      if (parsedData.type === "add") {
-        const id = parsedData.item; // Use item as id for voice adds
-        addToCart(id, parsedData.item, parsedData.quantity || 1, activeTab);
-        return;
-      }
-
-      setKeyword(keyword + parsedData.keyword);
-      setRadius(parsedData.radius);
-
-      // Handle location
-      let currentLocation = userLocation;
-      if (!currentLocation) {
-        speak("I need your location to find nearby places. Trying to get your current location automatically.");
-        try {
-          const position = await new Promise<GeolocationPosition>((resolve, reject) => {
-            navigator.geolocation.getCurrentPosition(resolve, reject);
-          });
-          currentLocation = {
-            lat: position.coords.latitude,
-            lng: position.coords.longitude,
-          };
-          setUserLocation(currentLocation);
-          speak("Location acquired. Proceeding with search.");
-        } catch (err) {
-          speak("Unable to get your location automatically. Please set it manually on the map.");
-          setShowMap(true);
-          // Wait for map to close and location to be set
-          await new Promise((resolve) => {
-            const interval = setInterval(() => {
-              if (!showMap && userLocation) {
-                clearInterval(interval);
-                resolve(null);
-              }
-            }, 500);
-          });
-          currentLocation = userLocation;
-          if (!currentLocation) {
-            speak("Location not set. Search cancelled.");
-            return;
+      // check if user said a menu item
+      const menuItem = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
+      if (menuItem) {
+        const matchingRestaurants = restaurants.filter((r) => r.menu.includes(menuItem.id));
+        setFilteredRestaurants(matchingRestaurants);
+        if (matchingRestaurants.length > 0) {
+          // You could show these restaurants in UI or auto-select if only one
+          if (matchingRestaurants.length === 1) {
+            const selected = matchingRestaurants[0];
+            setOrder((prev) => ({ ...prev, restaurant: selected }));
+            setStep(4);
+            speak(`I found ${selected.name} serving ${menuItem.name}. Moving to menu selection.`);
+          } else {
+            // multiple restaurants serve this item → update UI to show only them
+            speak(`I found ${matchingRestaurants.length} restaurants serving ${menuItem.name}. Please choose one.`);
+            // Optional: store filtered list in state to render only them
           }
+        } else {
+          speak(`Sorry, no restaurants found serving ${menuItem.name}. Please say another restaurant or dish.`);
         }
       }
-
-      const fetchedRestaurants = await fetchRestaurants(currentLocation!);
-
-      speak(
-        `Search complete. I found ${fetchedRestaurants.length} restaurants for ${parsedData.keyword} within ${parsedData.radius / 1000} km. Check the dining tab for details and delivery tab for options.`
-      );
-    } catch (err: any) {
-      console.error("Frontend error:", err.response?.data || err.message);
-      speak("Sorry, there was an error processing your request.");
     }
-  };
+  }
+ else if (step === 4) {
+    if (cmd.includes("check")) {
+      setStep(5);
+      speak("Here is your cart. Say new order to start again.");
+    } else if (cmd.includes("add")) {
+      const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
+      if (item) {
+        // extract quantity (default = 1)
+        const match = cmd.match(/(\d+)/);
+        const qty = match ? parseInt(match[1], 10) : 1;
 
-  // Monitor showMap to detect when user confirms location
-  useEffect(() => {
-    if (!showMap && userLocation) {
-      // If needed, can trigger search here, but since we await in handleParse, it's handled
+        setOrder((prev) => ({
+          ...prev,
+          items: [...prev.items, ...Array(qty).fill(item)],
+        }));
+        speak(`${qty} ${item.name} added to your order.`);
+      }
+    } else if (cmd.includes("remove")) {
+      const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
+      if (item) {
+        // extract quantity (default = 1)
+        const match = cmd.match(/(\d+)/);
+        const qty = match ? parseInt(match[1], 10) : 1;
+
+        setOrder((prev) => {
+          let removed = 0;
+          const newItems = prev.items.filter((i) => {
+            if (i.id === item.id && removed < qty) {
+              removed++;
+              return false;
+            }
+            return true;
+          });
+          return { ...prev, items: newItems };
+        });
+        speak(`${qty} ${item.name} removed from your order.`);
+      }
     }
-  }, [showMap, userLocation]);
+  }
+ else if (step === 5) {
+    if (cmd.includes("new order")) {
+      setOrder({ type: "", contact: "", restaurant: null, items: [] });
+      setStep(1);
+      speak("Starting a new order. Please say dine in or takeaway.");
+    }
+  }
 
-  // --- UI ---
+  // setTranscript("");
+};
+
+
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col">
-      {/* 🔹 Search Toolbar */}
-      <div className="bg-white p-4 flex items-center gap-3 shadow-sm">
-        <img src="/logo.png" alt="Logo" className="w-12 h-12" />
-        <Button
-          variant={isListening ? "destructive" : "secondary"}
-          size="icon"
-          onClick={handleVoiceInput}
-        >
-          <Mic size={20} />
-        </Button>
-        <Button variant="secondary" size="icon" onClick={() => setShowMap(true)}>
-          <MapPin size={20} />
-        </Button>
-        <Button variant="secondary" size="icon" onClick={() => setShowCart(true)}>
-          <ShoppingCart size={20} />
-          {cart.reduce((sum, item) => sum + item.quantity, 0) > 0 && (
-            <Badge className="ml-1">
-              {cart.reduce((sum, item) => sum + item.quantity, 0)}
-            </Badge>
-          )}
-        </Button>
-        <VoiceIndicator isActive={isListening} />
-      </div>
-
-      {/* 🔹 Tabs */}
-      <Tabs value={activeTab} onValueChange={(val: any) => setActiveTab(val)} className="flex-1 items-center">
-        <TabsList className="w-1/2 text-3xl font-bold grid grid-cols-2 sticky top-0 bg-white z-10 shadow">
-          <TabsTrigger value="dining"><HomeIcon size={20} /> Dining Out</TabsTrigger>
-          <TabsTrigger value="delivery" onClick={fetchFoodImages}><Bike size={20} /> Delivery</TabsTrigger>
-        </TabsList>
-
-        {/* Dining Out */}
-        <TabsContent value="dining" className="p-12">
-          {restaurants.length === 0 ? (
-            <p className="text-center text-gray-500">No restaurants found. Try searching!</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {restaurants.map((r, idx) => {
-                const distance =
-                  userLocation && r.geometry?.location
-                    ? calculateDistance(
-                        userLocation.lat,
-                        userLocation.lng,
-                        r.geometry.location.lat,
-                        r.geometry.location.lng
-                      )
-                    : null;
-                const id = r.place_id;
-                const quantity = quantities[id] || 0;
-                const image = r.photos?.[0] ? getPhotoUrl(r.photos[0].photo_reference) : undefined;
-                return (
-                  <Card key={idx} className="overflow-hidden rounded-2xl">
-                    {r.photos?.length > 0 ? (
-                      <img
-                        src={getPhotoUrl(r.photos[0].photo_reference)}
-                        alt={r.name}
-                        className="w-full h-36 object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-36 bg-gray-200 flex items-center justify-center">
-                        No Image
-                      </div>
-                    )}
-                    <CardHeader>
-                      <CardTitle className="text-lg font-semibold">{r.name}</CardTitle>
-                      <p className="text-sm text-gray-600">{r.vicinity}</p>
-                    </CardHeader>
-                    <CardContent className="space-y-2">
-                      <p className="text-yellow-600 flex items-center">
-                        <Star size={16} className="mr-1" /> {r.rating || "N/A"} ({r.user_ratings_total || 0})
-                      </p>
-                      <p className="text-green-600 flex items-center">
-                        <IndianRupee size={16} className="mr-1" /> {getPriceRange(r.price_level)}
-                      </p>
-                      {distance && (
-                        <p className="text-gray-700 flex items-center text-sm">
-                          <Ruler size={16} className="mr-1" /> {distance} km away
-                        </p>
-                      )}
-                    </CardContent>
-                    <div className="flex items-center justify-between p-4 border-t">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setQuantities({ ...quantities, [id]: Math.max(0, quantity - 1) })}
-                        >
-                          -
-                        </Button>
-                        <span>{quantity}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setQuantities({ ...quantities, [id]: quantity + 1 })}
-                        >
-                          +
-                        </Button>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => addToCart(id, r.name, quantity, "dining", image)}
-                      >
-                        Add to Cart
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
+      {/* Transcript Box */}
+      <Card className="w-full max-w-md mb-6 border shadow-md">
+        <CardHeader>
+          <CardTitle className="text-sm text-gray-500">Voice Input</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-2">
+            {/* Raw Speech */}
+            <div>
+              <p className="text-xs text-gray-500">You said:</p>
+              <p className="font-semibold text-gray-800">
+                {transcript || "..."}
+              </p>
             </div>
-          )}
-        </TabsContent>
 
-        {/* Delivery */}
-        <TabsContent value="delivery" className="p-12">
-          {restaurants.length === 0 && foodImages.length === 0 ? (
-            <p className="text-center text-gray-500">No delivery options found. Try searching!</p>
-          ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-              {restaurants.map((restaurant, idx) => {
-                const image = idx < foodImages.length ? foodImages[idx] : null;
-                const id = restaurant.place_id || `delivery-${idx}`;
-                const quantity = quantities[id] || 0;
-                const name = restaurant.name || `Delivery Option ${idx + 1}`;
-                const distance =
-                  userLocation && restaurant.geometry?.location
-                    ? calculateDistance(
-                        userLocation.lat,
-                        userLocation.lng,
-                        restaurant.geometry.location.lat,
-                        restaurant.geometry.location.lng
-                      )
-                    : null;
-                return (
-                  <Card key={idx} className="overflow-hidden shadow-lg rounded-2xl">
-                    {image ? (
-                      <img src={image.link} alt={name} className="w-full h-36 object-cover" />
-                    ) : restaurant.photos?.length > 0 ? (
-                      <img
-                        src={getPhotoUrl(restaurant.photos[0].photo_reference)}
-                        alt={name}
-                        className="w-full h-36 object-cover"
-                      />
-                    ) : (
-                      <div className="w-full h-36 bg-gray-200 flex items-center justify-center">
-                        No Image
-                      </div>
-                    )}
-                    <CardContent className="pt-3 space-y-2">
-                      <h2 className="text-md font-semibold">{name}</h2>
-                      <p className="text-yellow-600 flex items-center">
-                        <Star size={16} className="mr-1" />
-                        {restaurant.rating || "N/A"} ({restaurant.user_ratings_total || 0})
-                      </p>
-                      {distance && (
-                        <p className="text-sm text-gray-600 flex items-center">
-                          <Ruler size={16} className="mr-1" />
-                          {distance} km
-                        </p>
-                      )}
-                    </CardContent>
-                    <div className="flex items-center justify-between p-4 border-t">
-                      <div className="flex items-center gap-2">
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setQuantities({ ...quantities, [id]: Math.max(0, quantity - 1) })}
-                        >
-                          -
-                        </Button>
-                        <span>{quantity}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => setQuantities({ ...quantities, [id]: quantity + 1 })}
-                        >
-                          +
-                        </Button>
-                      </div>
-                      <Button
-                        size="sm"
-                        onClick={() => addToCart(id, name, quantity, "delivery", image?.link || restaurant.photos?.[0]?.photo_reference ? getPhotoUrl(restaurant.photos[0].photo_reference) : undefined)}
-                      >
-                        Add to Cart
-                      </Button>
-                    </div>
-                  </Card>
-                );
-              })}
+            {/* Parsed Command */}
+            <div className="border-t pt-2">
+              <p className="text-xs text-gray-500">System understood:</p>
+              <p className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                {parsedCommand || "..."}
+              </p>
             </div>
-          )}
-        </TabsContent>
-      </Tabs>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* 🔹 Map Dialog */}
-      <Dialog open={showMap} onOpenChange={setShowMap}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Select Location</DialogTitle>
-          </DialogHeader>
-          {isLoaded ? (
-            <GoogleMap
-              mapContainerStyle={containerStyle}
-              center={userLocation || defaultCenter}
-              zoom={14}
-              onClick={(e) =>
-                setUserLocation({
-                  lat: e.latLng?.lat() || 0,
-                  lng: e.latLng?.lng() || 0,
-                })
-              }
-            >
-              {userLocation && (
-                <Marker
-                  position={userLocation}
-                  draggable
-                  onDragEnd={(e) =>
-                    setUserLocation({
-                      lat: e.latLng?.lat() || 0,
-                      lng: e.latLng?.lng() || 0,
-                    })
-                  }
-                />
+
+      {/* Step 1: Choose type */}
+      {step === 1 && (
+        <Card className="w-full max-w-md border shadow-md p-6 text-center">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
+              <Utensils /> Choose Order Type
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Button onClick={() => { setOrder({ ...order, type: "Dine In" }); setStep(2); }}>Dine In</Button>
+            <Button variant="secondary" onClick={() => { setOrder({ ...order, type: "Takeaway" }); setStep(2); }}>Takeaway</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 2: Contact details */}
+      {step === 2 && (
+        <Card className="w-full max-w-md border shadow-md p-6 text-center">
+          <CardHeader>
+            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
+              <Phone /> Contact Details
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-4">
+            <Input placeholder="Enter contact number" onBlur={(e) => { setOrder({ ...order, contact: e.target.value }); setStep(3); }} />
+            <Button variant="secondary" onClick={() => { setOrder({ ...order, contact: "Guest" }); setStep(3); }}>Continue as Guest</Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Step 3: Restaurant list */}
+      {step === 3 && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
+          {filteredRestaurants.map((r) => (
+            <Card key={r.id} className="cursor-pointer border shadow-md" onClick={() => { setOrder({ ...order, restaurant: r }); setStep(4); }}>
+              <CardContent className="p-3">
+                <img src={r.image} alt={r.name} className="w-full h-32 object-cover rounded-lg" />
+                <p className="font-semibold mt-2 flex items-center gap-2"><Store size={16}/> {r.name}</p>
+                <p className="text-sm text-gray-500">{r.distance}</p>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      )}
+
+      {/* Step 4: Menu */}
+      {step === 4 && (
+        <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">
+            {order.restaurant &&
+              menuItems
+                .filter((item) => order.restaurant?.menu.includes(item.id)) // ✅ only items from restaurant menu
+                .map((item) => (
+                  <Card
+                    key={item.id}
+                    className="cursor-pointer border shadow-md"
+                    onClick={() =>
+                      setOrder((prev) => ({
+                        ...prev,
+                        items: [...prev.items, item],
+                      }))
+                    }
+                  >
+                    <CardContent className="p-3">
+                      <img
+                        src={item.image}
+                        alt={item.name}
+                        className="w-full h-32 object-cover rounded-lg"
+                      />
+                      <p className="font-semibold mt-2">{item.name}</p>
+                    </CardContent>
+                  </Card>
+                ))}
+          </div>
+          <Card className="w-72 border shadow-md">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <ShoppingCart size={18}/> Cart
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {order.items.length === 0 ? (
+                <p className="text-sm text-gray-500">No items added</p>
+              ) : (
+                <ul className="mt-2 space-y-1">
+                  {Object.entries(
+                    order.items.reduce((acc: Record<string, number>, item) => {
+                      acc[item.name] = (acc[item.name] || 0) + 1;
+                      return acc;
+                    }, {})
+                  ).map(([name, count], idx) => (
+                    <li key={idx} className="text-sm flex justify-between">
+                      <span>{name}</span>
+                      <span className="font-medium text-gray-700"> x {count}</span>
+                    </li>
+                  ))}
+                </ul>
               )}
-            </GoogleMap>
-          ) : (
-            <p>Loading map...</p>
-          )}
-          <DialogFooter>
-            <Button onClick={() => setShowMap(false)}>Confirm Location</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+              <Button className="mt-4 w-full" onClick={() => setStep(5)}>
+                Checkout
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-      {/* 🔹 Cart Dialog */}
-      <Dialog open={showCart} onOpenChange={setShowCart}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>Your Cart</DialogTitle>
-          </DialogHeader>
-          {cart.length === 0 ? (
-            <p className="text-center text-gray-500">Your cart is empty.</p>
-          ) : (
-            <div className="space-y-4">
-              {cart.map((item) => (
-                <div key={item.id} className="flex items-center gap-4">
-                  {item.image && <img src={item.image} alt={item.name} className="w-16 h-16 object-cover rounded" />}
-                  <div>
-                    <h3 className="font-semibold">{item.name}</h3>
-                    <p>Quantity: {item.quantity}</p>
-                    <p>Type: {item.type}</p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          )}
-          <DialogFooter>
-            <Button onClick={() => { setShowCart(false); speak("Proceeding to checkout."); alert("Checkout complete!"); setCart([]); }}>Checkout</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      {/* Step 5: Success */}
+      {step === 5 && (
+        <Card className="w-full max-w-md border shadow-md text-center p-6">
+          <CardHeader>
+            <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
+              <Home /> Order Successful 🎉
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p className="mb-2">Your token: <span className="font-mono">#{Math.floor(Math.random() * 1000)}</span></p>
+            <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
+            <Button onClick={() => { setOrder({ type: "", contact: "", restaurant: null, items: [] }); setStep(1); }}>New Order</Button>
+          </CardContent>
+        </Card>
+      )}
     </div>
   );
 }
