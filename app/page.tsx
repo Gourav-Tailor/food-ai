@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { ShoppingCart, Phone, Home, Utensils, Store } from "lucide-react";
+import { toast } from "sonner";
 
 interface Restaurant {
   id: number;
@@ -78,6 +79,80 @@ export default function VoiceFoodOrderingApp() {
         const last = event.results.length - 1;
         const text = event.results[last][0].transcript.trim();
 
+        const getSystemPrompt = (step: number, restaurants: any[], menuItems: any[]) => {
+          switch (step) {
+            case 1:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY. No extra text, no explanations.
+
+                Step 1: Look for intent to select order type.
+                - Output "dine in" if user mentions dining in, eating here, or similar.
+                - Output "takeaway" if user mentions take away, pickup, to go, or similar.
+
+                If nothing matches, return { "command": "unknown" }.
+
+                ALWAYS output exactly one JSON object with a "command" field.
+              `;
+
+            case 2:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY.
+
+                Step 2: Look for contact info.
+                - Output "guest" if user says guest, anonymous, no number, or similar.
+                - Output "number is <digits>" if user provides a phone number (extract only digits).
+
+                If nothing matches, return { "command": "unknown" }.
+
+                ALWAYS output exactly one JSON object with a "command" field.
+              `;
+
+            case 3:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY.
+
+                Step 3: Look for restaurant selection.
+                - Output "restaurant <name>" where <name> is the closest match.
+                - Available restaurants: ${restaurants.map(r => r.name).join(", ")}.
+
+                If nothing matches, return { "command": "unknown" }.
+              `;
+
+            case 4:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY.
+
+                Step 4: Look for cart actions.
+                - "add <quantity> <item>" → default 1 if quantity not spoken
+                - "remove <quantity> <item>" → default 1 if quantity not spoken
+                - "checkout" for done/finish/pay
+                - Available menu items: ${menuItems.map(m => m.name).join(", ")}.
+
+                If nothing matches, return { "command": "unknown" }.
+              `;
+
+            case 5:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY.
+
+                Step 5: Look for reset.
+                - Output "new order" if user wants to start over, reset, or new.
+
+                If nothing matches, return { "command": "unknown" }.
+              `;
+
+            default:
+              return `
+                You are a strict command parser for a voice-based food ordering assistant.
+                Return JSON ONLY. Output { "command": "unknown" } always.
+              `;
+          }
+        };
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
           headers: {
@@ -89,43 +164,7 @@ export default function VoiceFoodOrderingApp() {
             messages: [
               {
                 role: "system",
-                content: `
-                    You are a strict command parser for a voice-based food ordering assistant.
-                    Return JSON ONLY. No extra text, no explanations.
-
-                    Rules (normalize everything to lower-case, ignore filler words like "um", "please", "I want", etc.):
-                    - Step 1: Look for intent to select order type. Output "dine in" if user mentions dining in, eating here, or similar. Output "takeaway" if user mentions take away, pickup, to go, or similar.
-                    - Step 2: Look for contact info. Output "guest" if user says guest, anonymous, no number, or similar. Output "number is <digits>" if user provides a phone number (extract only the digits).
-                    - Step 3: Look for restaurant selection. Output "restaurant <name>" where <name> is the closest matching restaurant name (fuzzy match allowed). Available restaurants: ${restaurants.map(r => r.name).join(', ')}.
-                    - Step 4: Look for cart actions.
-                      • Output "add <quantity> <item>" where <quantity> is the number of items if spoken, otherwise 1.  
-                        Example: "add 3 gulab jamun" → { "command": "add 3 gulab jamun" }  
-                        Example: "add gulab jamun" → { "command": "add 1 gulab jamun" }  
-                      • Output "remove <quantity> <item>" similarly for removals.  
-                        Example: "remove 2 dal baati" → { "command": "remove 2 dal baati" }  
-                        Example: "remove gulab jamun" → { "command": "remove 1 gulab jamun" }  
-                      • Output "checkout" for finishing, paying, done, or similar.  
-                      Available menu items: ${menuItems.map(m => m.name).join(', ')}.
-                    - Step 5: Output "new order" if user wants to start over, reset, or new.
-
-                    Examples:
-                    - User: "I'd like to dine in please" → { "command": "dine in" }
-                    - User: "Take out" → { "command": "takeaway" }
-                    - User: "I'm a guest" → { "command": "guest" }
-                    - User: "My phone is five five five one two three four" → { "command": "number is 5551234" }
-                    - User: "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
-                    - User: "Pick the marwar one" → { "command": "restaurant marwar delight" }
-                    - User: "Add gulab jamun and dal baati" → { "command": "add 1 gulab jamun" } and { "command": "add 1 dal baati churma" }
-                    - User: "Add 3 gulab jamun" → { "command": "add 3 gulab jamun" }
-                    - User: "Remove the namkeen" → { "command": "remove 1 namkeen sev" }
-                    - User: "Remove 2 gulab jamun" → { "command": "remove 2 gulab jamun" }
-                    - User: "I'm done, checkout now" → { "command": "checkout" }
-                    - User: "Start a new order" → { "command": "new order" }
-
-                    If you cannot parse confidently or it doesn't match the current step, return: { "command": "unknown" }
-
-                    ALWAYS output exactly one JSON object with a "command" field.
-                    `,
+                content: getSystemPrompt(step, restaurants, menuItems),
               },
               {
                 role: "user",
@@ -144,10 +183,12 @@ export default function VoiceFoodOrderingApp() {
           handleVoiceCommand(parserJDData.command);
           setParsedCommand(parserJDData.command);
           setTranscript(text);
+          toast.success(parserJDData.command);
         } else {
           handleVoiceCommand(text);
           setParsedCommand(text);
           setTranscript(text);
+          toast.error(text)
         }
 
         console.log("Parsed Command:", parserJDData);
@@ -275,24 +316,16 @@ export default function VoiceFoodOrderingApp() {
     <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
       {/* Transcript Box */}
       <Card className="w-full max-w-md mb-6 border shadow-md">
-        <CardHeader>
+        {/* <CardHeader>
           <CardTitle className="text-sm text-gray-500">Voice Input</CardTitle>
-        </CardHeader>
+        </CardHeader> */}
         <CardContent>
           <div className="space-y-2">
             {/* Raw Speech */}
             <div>
               <p className="text-xs text-gray-500">You said:</p>
-              <p className="font-semibold text-gray-800">
+              <p className="font-normal text-sm text-gray-800">
                 {transcript || "..."}
-              </p>
-            </div>
-
-            {/* Parsed Command */}
-            <div className="border-t pt-2">
-              <p className="text-xs text-gray-500">System understood:</p>
-              <p className="font-mono text-sm bg-gray-100 px-2 py-1 rounded">
-                {parsedCommand || "..."}
               </p>
             </div>
           </div>
