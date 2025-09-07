@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ShoppingCart, Phone, Home, Utensils, Store, Volume2 } from "lucide-react";
+import { ShoppingCart, Phone, Home, Utensils, Store, Volume2, Mic2 } from "lucide-react";
 import { toast } from "sonner";
 import { motion } from "framer-motion";
 
@@ -420,13 +420,13 @@ export default function VoiceFoodOrderingApp() {
           }}
           className="text-blue-500"
         >
-          <Volume2 size={24} />
+          {isSpeaking ? <Volume2 size={24} /> : <Mic2 size={24} />}
         </motion.div>
 
         {/* Transcript */}
         <div className="space-y-1 flex-1">
           <p className="font-medium text-gray-800 text-sm truncate">
-            {transcript || "..."}
+            {transcript || "Listening..."}
           </p>
         </div>
       </CardContent>
@@ -499,14 +499,14 @@ export default function VoiceFoodOrderingApp() {
               </Card>
             ))}
             {currentOptions.length === 0 && (
-              <p className="text-center col-span-full text-gray-500">
-                No items to show. Say what you want to eat.
+              <p className="text-center col-span-full text-white text-2xl font-bold">
+                Say what you want to eat ?, eg. I want to eat Ker Sangri!
               </p>
             )}
           </div>
 
           {/* Cart */}
-          <Card className="w-full md:w-72 border shadow-md rounded-2xl">
+          {currentOptions.length !== 0 && <Card className="w-full md:w-72 border shadow-md rounded-2xl">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-gray-800">
                 <ShoppingCart size={18} className="text-orange-500" /> Cart
@@ -552,7 +552,7 @@ export default function VoiceFoodOrderingApp() {
                 Checkout
               </Button>
             </CardContent>
-          </Card>
+          </Card>}
         </div>
       )}
 
