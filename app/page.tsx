@@ -4,22 +4,10 @@ import { useState, useEffect } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { ShoppingCart, Phone, Home, Utensils, Store } from "lucide-react";
+import { ShoppingCart, Phone, Home, Utensils, Store, Volume2 } from "lucide-react";
 import { toast } from "sonner";
+import { motion } from "framer-motion";
 
-interface Restaurant {
-  id: number;
-  name: string;
-  distance: string;
-  image: string;
-  menu: number[]; // <-- list of menu item ids available at this restaurant
-}
-
-interface MenuItem {
-  id: number;
-  name: string;
-  image: string;
-}
 
 interface Order {
   type: string;
@@ -28,25 +16,127 @@ interface Order {
   items: MenuItem[];
 }
 
+type Restaurant = {
+  id: number;
+  name: string;
+  distance: string;
+  image: string;
+  menu: number[];
+  rating: number;
+  tags?: string[];
+};
 
 const restaurants: Restaurant[] = [
-  { id: 1, name: "Rajasthani Thali", distance: "1.5 km", image: "/rajasthani-thali.jpg", menu: [1, 2, 3, 4, 7] },
-  { id: 2, name: "Marwar Delight", distance: "2.8 km", image: "/marwar-delight.jpg", menu: [1, 3, 5, 6, 8] },
-  { id: 3, name: "Desert Spice", distance: "3.2 km", image: "/desert-spice.jpg", menu: [2, 4, 6, 7, 9] },
-  { id: 4, name: "Jaipur Bhoj", distance: "4.0 km", image: "/jaipur-bhoj.jpg", menu: [1, 2, 5, 8, 9] },
+  {
+    id: 1,
+    name: "Rajasthani Thali",
+    distance: "1.5 km",
+    image: "/rajasthani-thali.jpg",
+    menu: [1, 2, 3, 4, 7],
+    rating: 4.6,
+    tags: ["bestseller", "discount"],
+  },
+  {
+    id: 2,
+    name: "Marwar Delight",
+    distance: "2.8 km",
+    image: "/marwar-delight.jpg",
+    menu: [1, 3, 5, 6, 8],
+    rating: 4.3,
+    tags: ["discount"],
+  },
+  {
+    id: 3,
+    name: "Desert Spice",
+    distance: "3.2 km",
+    image: "/desert-spice.jpg",
+    menu: [2, 4, 6, 7, 9],
+    rating: 4.1,
+    tags: ["bestseller"],
+  },
+  {
+    id: 4,
+    name: "Jaipur Bhoj",
+    distance: "4.0 km",
+    image: "/jaipur-bhoj.jpg",
+    menu: [1, 2, 5, 8, 9],
+    rating: 3.9,
+    tags: [],
+  },
 ];
 
+type MenuItem = {
+  id: number;
+  name: string;
+  image: string;
+  price: number;
+  oldPrice?: number; // optional for discounts
+  tags?: string[];   // optional (e.g., "bestseller", "discount")
+};
+
 const menuItems: MenuItem[] = [
-  { id: 1, name: "Dal Baati Churma", image: "/dal-baati-churma.jpg" },
-  { id: 2, name: "Gatte ki Sabzi", image: "/gatte-ki-sabzi.jpg" },
-  { id: 3, name: "Ker Sangri", image: "/ker-sangri.jpg" },
-  { id: 4, name: "Bajre ki Roti", image: "/bajre-ki-roti.jpg" },
-  { id: 5, name: "Laal Maas", image: "/laal-maas.jpg" },
-  { id: 6, name: "Gulab Jamun", image: "/gulab-jamun.jpg" },
-  { id: 7, name: "Namkeen Sev", image: "/namkeen-sev.jpg" },
-  { id: 8, name: "Mawa Kachori", image: "/mawa-kachori.jpg" },
-  { id: 9, name: "Pyaaz Kachori", image: "/pyaaz-kachori.jpg" },
+  {
+    id: 1,
+    name: "Dal Baati Churma",
+    image: "/dal-baati-churma.jpg",
+    price: 180,
+    tags: ["bestseller"],
+  },
+  {
+    id: 2,
+    name: "Gatte ki Sabzi",
+    image: "/gatte-ki-sabzi.jpg",
+    price: 150,
+  },
+  {
+    id: 3,
+    name: "Ker Sangri",
+    image: "/ker-sangri.jpg",
+    price: 200,
+    oldPrice: 240,
+    tags: ["discount"],
+  },
+  {
+    id: 4,
+    name: "Bajre ki Roti",
+    image: "/bajre-ki-roti.jpg",
+    price: 50,
+  },
+  {
+    id: 5,
+    name: "Laal Maas",
+    image: "/laal-maas.jpg",
+    price: 350,
+    tags: ["bestseller"],
+  },
+  {
+    id: 6,
+    name: "Gulab Jamun",
+    image: "/gulab-jamun.jpg",
+    price: 100,
+  },
+  {
+    id: 7,
+    name: "Namkeen Sev",
+    image: "/namkeen-sev.jpg",
+    price: 80,
+  },
+  {
+    id: 8,
+    name: "Mawa Kachori",
+    image: "/mawa-kachori.jpg",
+    price: 120,
+    oldPrice: 150,
+    tags: ["discount"],
+  },
+  {
+    id: 9,
+    name: "Pyaaz Kachori",
+    image: "/pyaaz-kachori.jpg",
+    price: 90,
+  },
 ];
+
 
 export default function VoiceFoodOrderingApp() {
   const [step, setStep] = useState<number>(1);
@@ -54,15 +144,20 @@ export default function VoiceFoodOrderingApp() {
   const [order, setOrder] = useState<Order>({ type: "", contact: "", restaurant: null, items: [] });
   const [filteredRestaurants, setFilteredRestaurants] = useState<Restaurant[]>(restaurants);
   const [parsedCommand, setParsedCommand] = useState<string>("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
 
 
   // --- TTS Helper ---
-  const speak = (text: string) => {
-    if (typeof window === "undefined") return;
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    window.speechSynthesis.speak(utterance);
-  };
+    const speak = (text: string) => {
+      if (typeof window === "undefined") return;
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.lang = "en-US";
+
+      utterance.onstart = () => setIsSpeaking(true);
+      utterance.onend = () => setIsSpeaking(false);
+
+      window.speechSynthesis.speak(utterance);
+    };
 
   useEffect(() => {
     const SpeechRecognition =
@@ -351,147 +446,346 @@ export default function VoiceFoodOrderingApp() {
 
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
-      {/* Transcript Box */}
-      <Card className="w-full max-w-md mb-6 border shadow-md">
-        {/* <CardHeader>
-          <CardTitle className="text-sm text-gray-500">Voice Input</CardTitle>
-        </CardHeader> */}
-        <CardContent>
-          <div className="space-y-2">
-            {/* Raw Speech */}
-            <div>
-              <p className="text-xs text-gray-500">You said:</p>
-              <p className="font-normal text-sm text-gray-800">
-                {transcript || "..."}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+    <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8">
+  {/* Transcript Box */}
+  <Card className="w-full max-w-md mb-6 border shadow-sm rounded-2xl bg-white">
+      <CardContent className="px-4 flex items-center gap-3">
+        {/* Speaker Icon */}
+        <motion.div
+          animate={isSpeaking ? { scale: [1, 1.3, 1] } : { scale: 1 }}
+          transition={{
+            duration: 0.6,
+            repeat: isSpeaking ? Infinity : 0,
+            ease: "easeInOut",
+          }}
+          className="text-blue-500"
+        >
+          <Volume2 size={24} />
+        </motion.div>
 
-
-      {/* Step 1: Choose type */}
-      {step === 1 && (
-        <Card className="w-full max-w-md border shadow-md p-6 text-center">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
-              <Utensils /> Choose Order Type
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Button onClick={() => { setOrder({ ...order, type: "Dine In" }); setStep(2); }}>Dine In</Button>
-            <Button variant="secondary" onClick={() => { setOrder({ ...order, type: "Takeaway" }); setStep(2); }}>Takeaway</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 2: Contact details */}
-      {step === 2 && (
-        <Card className="w-full max-w-md border shadow-md p-6 text-center">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
-              <Phone /> Contact Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Input placeholder="Enter contact number" onBlur={(e) => { setOrder({ ...order, contact: e.target.value }); setStep(3); }} />
-            <Button variant="secondary" onClick={() => { setOrder({ ...order, contact: "Guest" }); setStep(3); }}>Continue as Guest</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 3: Restaurant list */}
-      {step === 3 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
-          {filteredRestaurants.map((r) => (
-            <Card key={r.id} className="cursor-pointer border shadow-md" onClick={() => { setOrder({ ...order, restaurant: r }); setStep(4); }}>
-              <CardContent className="p-3">
-                <img src={r.image} alt={r.name} className="w-full h-32 object-cover rounded-lg" />
-                <p className="font-semibold mt-2 flex items-center gap-2"><Store size={16}/> {r.name}</p>
-                <p className="text-sm text-gray-500">{r.distance}</p>
-              </CardContent>
-            </Card>
-          ))}
+        {/* Transcript */}
+        <div className="space-y-1 flex-1">
+          <p className="font-medium text-gray-800 text-sm truncate">
+            {transcript || "..."}
+          </p>
         </div>
-      )}
+      </CardContent>
+    </Card>
 
-      {/* Step 4: Menu */}
-      {step === 4 && (
-        <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">
-            {order.restaurant &&
-              menuItems
-                .filter((item) => order.restaurant?.menu.includes(item.id)) // ✅ only items from restaurant menu
-                .map((item) => (
-                  <Card
-                    key={item.id}
-                    className="cursor-pointer border shadow-md"
-                    onClick={() =>
-                      setOrder((prev) => ({
-                        ...prev,
-                        items: [...prev.items, item],
-                      }))
+  {/* Step 1: Choose type */}
+  {step === 1 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-3">
+          <Utensils className="h-5 w-5 text-indigo-500" />
+          Where would you like to enjoy your meal?
+        </CardTitle>
+      </CardHeader>
+
+      <CardContent className="flex flex-col gap-4">
+        {/* Dine In Option */}
+        <Button
+          className="w-full flex justify-between items-center rounded-xl px-6 py-4 text-lg shadow-sm hover:shadow-md transition-all duration-200"
+          onClick={() => {
+            setOrder({ ...order, type: "Dine In" });
+            setStep(2);
+          }}
+        >
+          <span>🍽️ Dine In</span>
+          <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
+            ➡️
+          </span>
+        </Button>
+
+        {/* Takeaway Option */}
+        <Button
+          variant="secondary"
+          className="w-full flex justify-between items-center rounded-xl px-6 py-4 text-lg shadow-sm hover:shadow-md transition-all duration-200"
+          onClick={() => {
+            setOrder({ ...order, type: "Takeaway" });
+            setStep(2);
+          }}
+        >
+          <span>🛍️ Takeaway</span>
+          <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
+            ➡️
+          </span>
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+
+
+  {/* Step 2: Contact details */}
+  {step === 2 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-2">
+          <Phone className="h-5 w-5 text-green-500" /> Contact Details
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Input
+          placeholder="Enter contact number"
+          className="rounded-xl"
+          onBlur={(e) => {
+            setOrder({ ...order, contact: e.target.value });
+            setStep(3);
+          }}
+        />
+        <Button
+          variant="secondary"
+          className="w-full rounded-xl"
+          onClick={() => {
+            setOrder({ ...order, contact: "Guest" });
+            setStep(3);
+          }}
+        >
+          Continue as Guest
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Step 3: Restaurant list */}
+  {step === 3 && (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl">
+      {filteredRestaurants.map((r) => (
+        <Card
+          key={r.id}
+          className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition bg-white"
+          onClick={() => {
+            setOrder({ ...order, restaurant: r });
+            setStep(4);
+          }}
+        >
+          <CardContent className="p-3">
+            {/* Image */}
+            <div className="relative">
+              <img
+                src={r.image}
+                alt={r.name}
+                className="w-full h-32 object-cover rounded-lg"
+              />
+              {/* Tags */}
+              <div className="absolute top-2 left-2 flex gap-2">
+                {r.tags?.includes("discount") && (
+                  <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+                    🔥 20% Discount
+                  </span>
+                )}
+                {r.tags?.includes("bestseller") && (
+                  <span className="bg-yellow-400 text-black text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+                    ⭐ Best Seller
+                  </span>
+                )}
+              </div>
+            </div>
+
+            {/* Restaurant Info */}
+            <p className="font-semibold mt-2 flex items-center gap-2 text-gray-800">
+              <Store size={16} className="text-indigo-500" /> {r.name}
+            </p>
+
+            {/* Ratings + Distance */}
+            <div className="flex items-center justify-between mt-1 text-sm text-gray-600">
+              <div className="flex items-center gap-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <span
+                    key={i}
+                    className={
+                      i < Math.round(r.rating)
+                        ? "text-yellow-400"
+                        : "text-gray-300"
                     }
                   >
-                    <CardContent className="p-3">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-32 object-cover rounded-lg"
-                      />
-                      <p className="font-semibold mt-2">{item.name}</p>
-                    </CardContent>
-                  </Card>
+                    ★
+                  </span>
                 ))}
-          </div>
-          <Card className="w-72 border shadow-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart size={18}/> Cart
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {order.items.length === 0 ? (
-                <p className="text-sm text-gray-500">No items added</p>
-              ) : (
-                <ul className="mt-2 space-y-1">
-                  {Object.entries(
-                    order.items.reduce((acc: Record<string, number>, item) => {
-                      acc[item.name] = (acc[item.name] || 0) + 1;
-                      return acc;
-                    }, {})
-                  ).map(([name, count], idx) => (
-                    <li key={idx} className="text-sm flex justify-between">
-                      <span>{name}</span>
-                      <span className="font-medium text-gray-700"> x {count}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Button className="mt-4 w-full" onClick={() => setStep(5)}>
-                Checkout
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Step 5: Success */}
-      {step === 5 && (
-        <Card className="w-full max-w-md border shadow-md text-center p-6">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
-              <Home /> Order Successful 🎉
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-2">Your token: <span className="font-mono">#{Math.floor(Math.random() * 1000)}</span></p>
-            <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
-            <Button onClick={() => { setOrder({ type: "", contact: "", restaurant: null, items: [] }); setStep(1); }}>New Order</Button>
+                <span className="ml-1 text-xs">({r.rating.toFixed(1)})</span>
+              </div>
+              <p className="text-xs">{r.distance}</p>
+            </div>
           </CardContent>
         </Card>
-      )}
+      ))}
     </div>
+  )}
+
+
+  {/* Step 4: Menu */}
+  {step === 4 && (
+    <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
+      {/* Menu List */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 flex-1">
+        {order.restaurant &&
+          menuItems
+            .filter((item) => order.restaurant?.menu.includes(item.id))
+            .map((item) => (
+              <Card
+                key={item.id}
+                className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition"
+                onClick={() =>
+                  setOrder((prev) => ({
+                    ...prev,
+                    items: [...prev.items, item],
+                  }))
+                }
+              >
+                <CardContent className="p-3">
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="w-full h-28 object-cover rounded-lg"
+                  />
+                  <p className="font-semibold mt-2 text-sm text-gray-800">
+                    {item.name}
+                  </p>
+                  <p className="text-sm font-bold text-green-600 font-medium">
+                    ₹{item.price}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+      </div>
+
+      {/* Cart */}
+      <Card className="w-full md:w-72 border shadow-md rounded-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-gray-800">
+            <ShoppingCart size={18} className="text-orange-500" /> Cart
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {order.items.length === 0 ? (
+            <p className="text-sm text-gray-500">No items added</p>
+          ) : (
+            <>
+              <ul className="mt-2 space-y-1">
+                {Object.entries(
+                  order.items.reduce(
+                    (acc: Record<string, { count: number; price: number }>, item) => {
+                      if (!acc[item.name]) {
+                        acc[item.name] = { count: 0, price: item.price };
+                      }
+                      acc[item.name].count += 1;
+                      return acc;
+                    },
+                    {}
+                  )
+                ).map(([name, data], idx) => (
+                  <li
+                    key={idx}
+                    className="text-sm flex justify-between border-b pb-1"
+                  >
+                    <span>
+                      {name} <span className="text-gray-500">₹{data.price}</span>
+                    </span>
+                    <span className="font-medium text-gray-700">× {data.count}</span>
+                  </li>
+                ))}
+              </ul>
+
+              {/* Total Price */}
+              <div className="mt-3 flex justify-between font-semibold text-gray-800">
+                <span>Total:</span>
+                <span>
+                  ₹
+                  {order.items.reduce((sum, item) => sum + item.price, 0)}
+                </span>
+              </div>
+            </>
+          )}
+          <Button className="mt-4 w-full rounded-xl" onClick={() => setStep(5)}>
+            Checkout
+          </Button>
+        </CardContent>
+      </Card>
+    </div>
+  )}
+
+
+  {/* Step 5: Success */}
+  {step === 5 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white">
+      <CardHeader>
+        <CardTitle className="text-xl font-bold flex items-center justify-center gap-2 text-green-600">
+          <Home /> Order Successful 🎉
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        {/* Restaurant Selected */}
+        <p className="mb-2 text-gray-700">
+          <span className="font-semibold">Restaurant:</span>{" "}
+          <span className="text-indigo-600">{order.restaurant?.name}</span>
+        </p>
+
+        {/* Order Items */}
+        <div className="mt-4 border-t pt-3 text-left">
+          <p className="font-semibold text-gray-800 mb-2">Order Details:</p>
+          <ul className="space-y-1">
+            {Object.entries(
+              order.items.reduce(
+                (
+                  acc: Record<string, { count: number; price: number }>,
+                  item
+                ) => {
+                  if (!acc[item.name]) {
+                    acc[item.name] = { count: 0, price: item.price };
+                  }
+                  acc[item.name].count += 1;
+                  return acc;
+                },
+                {}
+              )
+            ).map(([name, data], idx) => (
+              <li
+                key={idx}
+                className="flex justify-between text-sm border-b pb-1"
+              >
+                <span>
+                  {name} × {data.count}
+                </span>
+                <span className="font-medium text-gray-700">
+                  ₹{data.count * data.price}
+                </span>
+              </li>
+            ))}
+          </ul>
+
+          {/* Total Price */}
+          <div className="mt-3 flex justify-between font-bold text-gray-900 text-base border-t pt-2">
+            <span>Total</span>
+            <span>
+              ₹{order.items.reduce((sum, item) => sum + item.price, 0)}
+            </span>
+          </div>
+        </div>
+
+        {/* Token + Expected Time */}
+        <p className="mt-4 text-gray-700">
+          Your token:{" "}
+          <span className="font-mono font-bold text-indigo-600">
+            #{Math.floor(Math.random() * 1000)}
+          </span>
+        </p>
+        <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
+
+        {/* New Order Button */}
+        <Button
+          className="rounded-xl w-full"
+          onClick={() => {
+            setOrder({ type: "", contact: "", restaurant: null, items: [] });
+            setStep(1);
+          }}
+        >
+          Pay Now
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+
+</div>
+
   );
 }

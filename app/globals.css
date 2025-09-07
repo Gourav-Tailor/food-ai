@@ -117,6 +117,17 @@
     @apply border-border outline-ring/50;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-cover bg-center bg-no-repeat;
+    background-image: url("/hawa-mahal.jpg");
   }
+ 
+  body::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    filter: blur(6px); /* adjust blur */
+    z-index: -1;
+  }
+
 }
