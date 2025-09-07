@@ -12,8 +12,7 @@ import { motion } from "framer-motion";
 interface Order {
   type: string;
   contact: string;
-  restaurant: Restaurant | null;
-  items: MenuItem[];
+  items: { item: MenuItem; restaurant: Restaurant }[];
 }
 
 type Restaurant = {
@@ -139,10 +138,10 @@ const menuItems: MenuItem[] = [
 
 
 export default function VoiceFoodOrderingApp() {
-  const [step, setStep] = useState<number>(1);
+  const [screen, setScreen] = useState<"main" | "checkout">("main");
   const [transcript, setTranscript] = useState<string>("");
-  const [order, setOrder] = useState<Order>({ type: "", contact: "", restaurant: null, items: [] });
-  const [filteredRestaurants, setFilteredRestaurants] = useState<Restaurant[]>(restaurants);
+  const [order, setOrder] = useState<Order>({ type: "Takeaway", contact: "Guest", items: [] });
+  const [currentOptions, setCurrentOptions] = useState<{ item: MenuItem; restaurant: Restaurant }[]>([]);
   const [parsedCommand, setParsedCommand] = useState<string>("");
   const [isSpeaking, setIsSpeaking] = useState(false);
 
@@ -174,101 +173,44 @@ export default function VoiceFoodOrderingApp() {
         const last = event.results.length - 1;
         const text = event.results[last][0].transcript.trim();
 
-        const getSystemPrompt = (step: number, restaurants: any[], menuItems: any[]) => {
-          switch (step) {
-            case 1:
-              return `
+        const getSystemPrompt = (screen: string, restaurants: any[], menuItems: any[]) => {
+          if (screen === "main") {
+            return `
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY. No extra text, no explanations.
 
                 Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
-                - Identify intent to select order type.
-                - Output { "command": "dinein" } for phrases like "dine in", "eat here", "eating in", or similar.
-                - Output { "command": "takeaway" } for phrases like "take away", "pickup", "to go", or similar.
+                - For searching an item (e.g., "i want to eat gulab jamun", "show ker sangri"): Output { "command": "search item <exact_item_name>" } where <exact_item_name> is the closest fuzzy matched exact name from available menu items.
+                - If specifying restaurant with item (e.g., "gulab jamun from rajasthani thali"): Output { "command": "search item <exact_item_name> from <exact_restaurant_name>" }.
+                - For searching a restaurant's menu (e.g., "show marwar delight", "menu from desert spice"): Output { "command": "search restaurant <exact_restaurant_name>" }.
+                - For adding items: Output { "command": "add <quantity> <exact_item_name> from <exact_restaurant_name>" } where quantity defaults to 1 if not specified.
+                - For removing items: Output { "command": "remove <quantity> <exact_item_name> from <exact_restaurant_name>" } where quantity defaults to 1 if not specified.
+                - For checkout: phrases like "done", "finish", "pay", "checkout": Output { "command": "checkout" }.
+
+                Available restaurants: ${restaurants.map(r => r.name).join(", ")}.
+                Available menu items: ${menuItems.map(m => m.name).join(", ")}.
 
                 Examples:
-                - "I'd like to dine in please" → { "command": "dinein" }
-                - "Take out" → { "command": "takeaway" }
+                - "i want gulab jamun" → { "command": "search item Gulab Jamun" }
+                - "show me gulab jamun from rajasthani thali" → { "command": "search item Gulab Jamun from Rajasthani Thali" }
+                - "show rajasthani thali" → { "command": "search restaurant Rajasthani Thali" }
+                - "add 3 gulab jamun from rajasthani thali" → { "command": "add 3 Gulab Jamun from Rajasthani Thali" }
+                - "add gulab jamun from marwar delight" → { "command": "add 1 Gulab Jamun from Marwar Delight" }
+                - "remove 2 laal maas from desert spice" → { "command": "remove 2 Laal Maas from Desert Spice" }
+                - "checkout now" → { "command": "checkout" }
 
-                If no clear intent is detected, return { "command": "unknown" }.
+                If no clear intent or match, return { "command": "unknown" }.
 
                 ALWAYS return exactly one JSON object with a "command" field.
               `;
-
-            case 2:
-              return `
-                You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY. No extra text, no explanations.
-
-                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
-                - Extract contact information.
-                - Output { "command": "guest" } for phrases like "guest", "anonymous", "no number", or similar.
-                - Output { "command": "number is <digits>" } for a phone number, extracting only digits (e.g., "1234567890").
-
-                Examples:
-                - "I'm a guest" → { "command": "guest" }
-                - "My phone is five five five one two three four" → { "command": "number is 5551234" }
-
-                If no contact information is detected, return { "command": "unknown" }.
-
-                ALWAYS return exactly one JSON object with a "command" field.
-              `;
-
-            case 3:
-              return `
-                You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY. No extra text, no explanations.
-
-                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
-                - Identify restaurant selection.
-                - Output { "command": "restaurant <name>" } where <name> is the closest matching restaurant name using fuzzy matching.
-                - Available restaurants: ${restaurants.map(r => r.name).join(", ")}.
-                - Available menu items: ${menuItems.map(m => m.name).join(", ")}.
-
-                Examples:
-                - "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
-                - "Pick the marwar one" → { "command": "restaurant marwar delight" }
-                - "Ker Sangri" → { "command": "Ker Sangri" }
-
-                If no match is found, return { "command": "unknown" }.
-
-                ALWAYS return exactly one JSON object with a "command" field.
-              `;
-
-            case 4:
-              return `
-                You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY. No extra text, no explanations.
-
-                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
-                - Parse cart actions.
-                - For adding items: Output { "command": "add <quantity> <item>" } where <item> is the closest matching menu item (fuzzy match) and <quantity> defaults to 1 if not specified.
-                - For removing items: Output { "command": "remove <quantity> <item>" } where <item> is the closest matching menu item and <quantity> defaults to 1 if not specified.
-                - For checkout: Output { "command": "checkout" } for phrases like "done", "finish", "pay", or similar.
-                - Available menu items: ${menuItems.map(m => m.name).join(", ")}.
-                - If multiple items are mentioned (e.g., "add gulab jamun and dal baati"), return one JSON object per command, prioritizing the first valid item in this response, and process subsequent items in further responses.
-
-                Examples:
-                - "Add 3 gulab jamun" → { "command": "add 3 gulab jamun" }
-                - "Add gulab jamun" → { "command": "add 1 gulab jamun" }
-                - "Remove 2 dal baati" → { "command": "remove 2 dal baati churma" }
-                - "Remove namkeen" → { "command": "remove 1 namkeen sev" }
-                - "I'm done, checkout now" → { "command": "checkout" }
-                - "Add gulab jamun and dal baati" → { "command": "add 1 gulab jamun" } (first response)
-
-                If no valid action is detected, return { "command": "unknown" }.
-
-                ALWAYS return exactly one JSON object with a "command" field.
-              `;
-
-            case 5:
-              return `
+          } else if (screen === "checkout") {
+            return `
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY. No extra text, no explanations.
 
                 Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
                 - Detect intent to reset the order.
-                - Output { "command": "neworder" } for phrases like "start over", "reset", "new order", or similar.
+                - Output { "command": "new order" } for phrases like "start over", "reset", "new order", or similar.
 
                 Examples:
                 - "Start a new order" → { "command": "new order" }
@@ -277,14 +219,12 @@ export default function VoiceFoodOrderingApp() {
 
                 ALWAYS return exactly one JSON object with a "command" field.
               `;
-
-            default:
-              return `
+          }
+          return `
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY. No extra text, no explanations.
                 Output { "command": "unknown" } for all inputs.
               `;
-          }
         };
         const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
           method: "POST",
@@ -297,7 +237,7 @@ export default function VoiceFoodOrderingApp() {
             messages: [
               {
                 role: "system",
-                content: getSystemPrompt(step, restaurants, menuItems),
+                content: getSystemPrompt(screen, restaurants, menuItems),
               },
               {
                 role: "user",
@@ -333,95 +273,93 @@ export default function VoiceFoodOrderingApp() {
     recognition.start();
 
     return () => recognition.stop();
-  }, [step]);
+  }, [screen]);
 
   const handleVoiceCommand = (text: string) => {
-  const cmd = text.toLowerCase();
-  console.log("Transcript:", cmd);
+    const cmd = text.toLowerCase();
+    console.log("Transcript:", cmd);
 
-  if (step === 1) {
-    if (cmd.includes("in")) {
-      setOrder((prev) => ({ ...prev, type: "Dine In" }));
-      setStep(2);
-      speak("You selected dine in. Please say guest or tell me your number.");
-    } else if (cmd.includes("takeaway") || cmd.includes("take away")) {
-      setOrder((prev) => ({ ...prev, type: "Takeaway" }));
-      setStep(2);
-      speak("You selected takeaway. Please say guest or tell me your number.");
-    }
-  } else if (step === 2) {
-    if (cmd.includes("guest")) {
-      setOrder((prev) => ({ ...prev, contact: "Guest" }));
-      setStep(3);
-      speak("Contact set as guest. Now, please choose a restaurant.");
-    } else if (cmd.includes("number is")) {
-      const num = cmd.split("number is")[1]?.trim();
-      setOrder((prev) => ({ ...prev, contact: num }));
-      setStep(3);
-      speak(`Your number is ${num}. Now, please choose a restaurant.`);
-    }
-  } else if (step === 3) {
-    // check if user directly said restaurant name
-    const restaurant = restaurants.find(
-      (r) => cmd.includes(r.name.toLowerCase()) || cmd.includes(r.id.toString())
-    );
-
-    if (restaurant) {
-      setOrder((prev) => ({ ...prev, restaurant }));
-      setStep(4);
-      speak(`You selected ${restaurant.name}. Now, say add followed by an item to add it to your order or say checkout to continue.`);
-    } else {
-      // check if user said a menu item
-      const menuItem = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
-      if (menuItem) {
-        const matchingRestaurants = restaurants.filter((r) => r.menu.includes(menuItem.id));
-        setFilteredRestaurants(matchingRestaurants);
-        if (matchingRestaurants.length > 0) {
-          // You could show these restaurants in UI or auto-select if only one
-          if (matchingRestaurants.length === 1) {
-            const selected = matchingRestaurants[0];
-            setOrder((prev) => ({ ...prev, restaurant: selected }));
-            setStep(4);
-            speak(`I found ${selected.name} serving ${menuItem.name}. Moving to menu selection.`);
-          } else {
-            // multiple restaurants serve this item → update UI to show only them
-            speak(`I found ${matchingRestaurants.length} restaurants serving ${menuItem.name}. Please choose one.`);
-            // Optional: store filtered list in state to render only them
-          }
-        } else {
-          speak(`Sorry, no restaurants found serving ${menuItem.name}. Please say another restaurant or dish.`);
+    if (screen === "main") {
+      if (cmd.startsWith("search item ")) {
+        let itemName = cmd.replace("search item ", "").trim();
+        let restName: string | undefined = undefined;
+        if (itemName.includes(" from ")) {
+          const parts = itemName.split(" from ");
+          itemName = parts[0].trim();
+          restName = parts[1].trim();
         }
-      }
-    }
-  }
- else if (step === 4) {
-    if (cmd.includes("check")) {
-      setStep(5);
-      speak("Here is your cart. Say new order to start again.");
-    } else if (cmd.includes("add")) {
-      const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
-      if (item) {
-        // extract quantity (default = 1)
-        const match = cmd.match(/(\d+)/);
-        const qty = match ? parseInt(match[1], 10) : 1;
-
-        setOrder((prev) => ({
-          ...prev,
-          items: [...prev.items, ...Array(qty).fill(item)],
-        }));
-        speak(`${qty} ${item.name} added to your order.`);
-      }
-    } else if (cmd.includes("remove")) {
-      const item = menuItems.find((m) => cmd.includes(m.name.toLowerCase()));
-      if (item) {
-        // extract quantity (default = 1)
-        const match = cmd.match(/(\d+)/);
-        const qty = match ? parseInt(match[1], 10) : 1;
-
+        const item = menuItems.find((m) => m.name.toLowerCase() === itemName);
+        if (!item) {
+          speak("Sorry, item not found.");
+          return;
+        }
+        let matchingRests = restaurants.filter((r) => r.menu.includes(item.id));
+        if (restName) {
+          const rest = restaurants.find((r) => r.name.toLowerCase() === restName);
+          if (rest && matchingRests.some((mr) => mr.id === rest.id)) {
+            matchingRests = [rest];
+          } else {
+            speak("Sorry, restaurant not found or doesn't serve that item.");
+            return;
+          }
+        }
+        setCurrentOptions(matchingRests.map((r) => ({ item, restaurant: r })));
+        speak(`Showing ${item.name} from ${matchingRests.length} restaurants.`);
+      } else if (cmd.startsWith("search restaurant ")) {
+        const restName = cmd.replace("search restaurant ", "").trim();
+        const rest = restaurants.find((r) => r.name.toLowerCase() === restName);
+        if (!rest) {
+          speak("Sorry, restaurant not found.");
+          return;
+        }
+        const matchingItems = menuItems.filter((m) => rest.menu.includes(m.id));
+        setCurrentOptions(matchingItems.map((i) => ({ item: i, restaurant: rest })));
+        speak(`Showing menu from ${rest.name}.`);
+      } else if (cmd.startsWith("add ")) {
+        let addStr = cmd.replace("add ", "").trim();
+        let qty = 1;
+        const qtyMatch = addStr.match(/^(\d+) /);
+        if (qtyMatch) {
+          qty = parseInt(qtyMatch[1], 10);
+          addStr = addStr.replace(/^\d+ /, "");
+        }
+        if (!addStr.includes(" from ")) {
+          speak("Please specify the restaurant.");
+          return;
+        }
+        const [itemName, restName] = addStr.split(" from ").map((s) => s.trim());
+        const item = menuItems.find((m) => m.name.toLowerCase() === itemName);
+        const rest = restaurants.find((r) => r.name.toLowerCase() === restName);
+        if (item && rest && rest.menu.includes(item.id)) {
+          const toAdd = Array.from({ length: qty }, () => ({ item, restaurant: rest }));
+          setOrder((prev) => ({ ...prev, items: [...prev.items, ...toAdd] }));
+          speak(`Added ${qty} ${item.name} from ${rest.name}.`);
+        } else {
+          speak("Sorry, that item is not available at that restaurant.");
+        }
+      } else if (cmd.startsWith("remove ")) {
+        let remStr = cmd.replace("remove ", "").trim();
+        let qty = 1;
+        const qtyMatch = remStr.match(/^(\d+) /);
+        if (qtyMatch) {
+          qty = parseInt(qtyMatch[1], 10);
+          remStr = remStr.replace(/^\d+ /, "");
+        }
+        if (!remStr.includes(" from ")) {
+          speak("Please specify the restaurant.");
+          return;
+        }
+        const [itemName, restName] = remStr.split(" from ").map((s) => s.trim());
+        const item = menuItems.find((m) => m.name.toLowerCase() === itemName);
+        const rest = restaurants.find((r) => r.name.toLowerCase() === restName);
+        if (!item || !rest) {
+          speak("Sorry, item or restaurant not found.");
+          return;
+        }
         setOrder((prev) => {
           let removed = 0;
-          const newItems = prev.items.filter((i) => {
-            if (i.id === item.id && removed < qty) {
+          const newItems = prev.items.filter((entry) => {
+            if (entry.item.id === item.id && entry.restaurant.id === rest.id && removed < qty) {
               removed++;
               return false;
             }
@@ -429,21 +367,43 @@ export default function VoiceFoodOrderingApp() {
           });
           return { ...prev, items: newItems };
         });
-        speak(`${qty} ${item.name} removed from your order.`);
+        speak(`Removed ${qty} ${item.name} from ${rest.name}.`);
+      } else if (cmd === "checkout") {
+        setScreen("checkout");
+        speak("Here is your order summary.");
+      } else {
+        speak("Sorry, I didn't understand that.");
+      }
+    } else if (screen === "checkout") {
+      if (cmd === "new order") {
+        setOrder({ type: "Takeaway", contact: "Guest", items: [] });
+        setCurrentOptions([]);
+        setScreen("main");
+        speak("Starting a new order. What would you like to eat?");
+      } else {
+        speak("Sorry, I didn't understand that.");
       }
     }
-  }
- else if (step === 5) {
-    if (cmd.includes("new order")) {
-      setOrder({ type: "", contact: "", restaurant: null, items: [] });
-      setStep(1);
-      speak("Starting a new order. Please say dine in or takeaway.");
-    }
-  }
+  };
 
-  // setTranscript("");
-};
 
+  const getGroupedItems = (items: { item: MenuItem; restaurant: Restaurant }[]) => {
+    return items.reduce(
+      (acc: Record<string, { restaurant: Restaurant; items: Record<string, { count: number; price: number }> }>, entry) => {
+        const rKey = entry.restaurant.id.toString();
+        if (!acc[rKey]) {
+          acc[rKey] = { restaurant: entry.restaurant, items: {} };
+        }
+        const iKey = entry.item.id.toString();
+        if (!acc[rKey].items[iKey]) {
+          acc[rKey].items[iKey] = { count: 0, price: entry.item.price };
+        }
+        acc[rKey].items[iKey].count++;
+        return acc;
+      },
+      {}
+    );
+  };
 
   return (
     <div className="min-h-screen flex flex-col items-center justify-center p-4 md:p-8">
@@ -472,319 +432,194 @@ export default function VoiceFoodOrderingApp() {
       </CardContent>
     </Card>
 
-  {/* Step 1: Choose type */}
-  {step === 1 && (
-    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-3">
-          <Utensils className="h-5 w-5 text-indigo-500" />
-          Where would you like to enjoy your meal?
-        </CardTitle>
-      </CardHeader>
-
-      <CardContent className="flex flex-col gap-4">
-        {/* Dine In Option */}
-        <Button
-          className="w-full flex justify-between items-center rounded-xl px-6 py-4 text-lg shadow-sm hover:shadow-md transition-all duration-200"
-          onClick={() => {
-            setOrder({ ...order, type: "Dine In" });
-            setStep(2);
-          }}
-        >
-          <span>🍽️ Dine In</span>
-          <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
-            ➡️
-          </span>
-        </Button>
-
-        {/* Takeaway Option */}
-        <Button
-          variant="secondary"
-          className="w-full flex justify-between items-center rounded-xl px-6 py-4 text-lg shadow-sm hover:shadow-md transition-all duration-200"
-          onClick={() => {
-            setOrder({ ...order, type: "Takeaway" });
-            setStep(2);
-          }}
-        >
-          <span>🛍️ Takeaway</span>
-          <span className="ml-2 transition-transform duration-300 group-hover:translate-x-1">
-            ➡️
-          </span>
-        </Button>
-      </CardContent>
-    </Card>
-  )}
-
-
-  {/* Step 2: Contact details */}
-  {step === 2 && (
-    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
-      <CardHeader>
-        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-2">
-          <Phone className="h-5 w-5 text-green-500" /> Contact Details
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="flex flex-col gap-3">
-        <Input
-          placeholder="Enter contact number"
-          className="rounded-xl"
-          onBlur={(e) => {
-            setOrder({ ...order, contact: e.target.value });
-            setStep(3);
-          }}
-        />
-        <Button
-          variant="secondary"
-          className="w-full rounded-xl"
-          onClick={() => {
-            setOrder({ ...order, contact: "Guest" });
-            setStep(3);
-          }}
-        >
-          Continue as Guest
-        </Button>
-      </CardContent>
-    </Card>
-  )}
-
-  {/* Step 3: Restaurant list */}
-  {step === 3 && (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl">
-      {filteredRestaurants.map((r) => (
-        <Card
-          key={r.id}
-          className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition bg-white"
-          onClick={() => {
-            setOrder({ ...order, restaurant: r });
-            setStep(4);
-          }}
-        >
-          <CardContent className="p-3">
-            {/* Image */}
-            <div className="relative">
-              <img
-                src={r.image}
-                alt={r.name}
-                className="w-full h-32 object-cover rounded-lg"
-              />
-              {/* Tags */}
-              <div className="absolute top-2 left-2 flex gap-2">
-                {r.tags?.includes("discount") && (
-                  <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
-                    🔥 20% Discount
-                  </span>
-                )}
-                {r.tags?.includes("bestseller") && (
-                  <span className="bg-yellow-400 text-black text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
-                    ⭐ Best Seller
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Restaurant Info */}
-            <p className="font-semibold mt-2 flex items-center gap-2 text-gray-800">
-              <Store size={16} className="text-indigo-500" /> {r.name}
-            </p>
-
-            {/* Ratings + Distance */}
-            <div className="flex items-center justify-between mt-1 text-sm text-gray-600">
-              <div className="flex items-center gap-1">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <span
-                    key={i}
-                    className={
-                      i < Math.round(r.rating)
-                        ? "text-yellow-400"
-                        : "text-gray-300"
-                    }
-                  >
-                    ★
-                  </span>
-                ))}
-                <span className="ml-1 text-xs">({r.rating.toFixed(1)})</span>
-              </div>
-              <p className="text-xs">{r.distance}</p>
-            </div>
-          </CardContent>
-        </Card>
-      ))}
-    </div>
-  )}
-
-
-  {/* Step 4: Menu */}
-  {step === 4 && (
-    <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
-      {/* Menu List */}
-      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 flex-1">
-        {order.restaurant &&
-          menuItems
-            .filter((item) => order.restaurant?.menu.includes(item.id))
-            .map((item) => (
+      {screen === "main" && (
+        <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
+          {/* Grid of menu items with restaurant info */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 flex-1">
+            {currentOptions.map((option, idx) => (
               <Card
-                key={item.id}
-                className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition"
-                onClick={() =>
+                key={idx}
+                className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition bg-white"
+                onClick={() => {
                   setOrder((prev) => ({
                     ...prev,
-                    items: [...prev.items, item],
-                  }))
-                }
+                    items: [...prev.items, option],
+                  }));
+                  speak(`Added 1 ${option.item.name} from ${option.restaurant.name}.`);
+                }}
               >
                 <CardContent className="p-3">
-                  <img
-                    src={item.image}
-                    alt={item.name}
-                    className="w-full h-28 object-cover rounded-lg"
-                  />
+                  <div className="relative">
+                    <img
+                      src={option.item.image}
+                      alt={option.item.name}
+                      className="w-full h-28 object-cover rounded-lg"
+                    />
+                    <div className="absolute top-2 left-2 flex gap-2">
+                      {option.item.tags?.includes("discount") && (
+                        <span className="bg-red-500 text-white text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+                          🔥 20% Discount
+                        </span>
+                      )}
+                      {option.item.tags?.includes("bestseller") && (
+                        <span className="bg-yellow-400 text-black text-[10px] px-2 py-0.5 rounded-full font-medium shadow">
+                          ⭐ Best Seller
+                        </span>
+                      )}
+                    </div>
+                  </div>
                   <p className="font-semibold mt-2 text-sm text-gray-800">
-                    {item.name}
+                    {option.item.name}
                   </p>
-                  <p className="text-sm font-bold text-green-600 font-medium">
-                    ₹{item.price}
+                  <p className="text-xs text-gray-600">
+                    {option.restaurant.name} - {option.restaurant.distance}
                   </p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-green-600">₹{option.item.price}</p>
+                    {option.item.oldPrice && (
+                      <p className="text-xs line-through text-gray-500">₹{option.item.oldPrice}</p>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1 text-xs mt-1">
+                    {Array.from({ length: 5 }).map((_, i) => (
+                      <span
+                        key={i}
+                        className={
+                          i < Math.round(option.restaurant.rating)
+                            ? "text-yellow-400"
+                            : "text-gray-300"
+                        }
+                      >
+                        ★
+                      </span>
+                    ))}
+                    <span className="ml-1">({option.restaurant.rating.toFixed(1)})</span>
+                  </div>
                 </CardContent>
               </Card>
             ))}
-      </div>
+            {currentOptions.length === 0 && (
+              <p className="text-center col-span-full text-gray-500">
+                No items to show. Say what you want to eat.
+              </p>
+            )}
+          </div>
 
-      {/* Cart */}
-      <Card className="w-full md:w-72 border shadow-md rounded-2xl">
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2 text-gray-800">
-            <ShoppingCart size={18} className="text-orange-500" /> Cart
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          {order.items.length === 0 ? (
-            <p className="text-sm text-gray-500">No items added</p>
-          ) : (
-            <>
-              <ul className="mt-2 space-y-1">
-                {Object.entries(
-                  order.items.reduce(
-                    (acc: Record<string, { count: number; price: number }>, item) => {
-                      if (!acc[item.name]) {
-                        acc[item.name] = { count: 0, price: item.price };
-                      }
-                      acc[item.name].count += 1;
-                      return acc;
-                    },
-                    {}
-                  )
-                ).map(([name, data], idx) => (
-                  <li
-                    key={idx}
-                    className="text-sm flex justify-between border-b pb-1"
-                  >
+          {/* Cart */}
+          <Card className="w-full md:w-72 border shadow-md rounded-2xl">
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2 text-gray-800">
+                <ShoppingCart size={18} className="text-orange-500" /> Cart
+              </CardTitle>
+            </CardHeader>
+            <CardContent>
+              {order.items.length === 0 ? (
+                <p className="text-sm text-gray-500">No items added</p>
+              ) : (
+                <>
+                  {Object.entries(getGroupedItems(order.items)).map(([rKey, group]) => (
+                    <div key={rKey} className="mb-4">
+                      <p className="font-semibold flex items-center gap-2 text-gray-800">
+                        <Store size={16} className="text-indigo-500" /> {group.restaurant.name}
+                      </p>
+                      <ul className="mt-2 space-y-1">
+                        {Object.entries(group.items).map(([iKey, data]) => {
+                          const item = menuItems.find((m) => m.id === parseInt(iKey))!;
+                          return (
+                            <li
+                              key={iKey}
+                              className="text-sm flex justify-between border-b pb-1"
+                            >
+                              <span>
+                                {item.name} <span className="text-gray-500">₹{data.price}</span>
+                              </span>
+                              <span className="font-medium text-gray-700">× {data.count}</span>
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    </div>
+                  ))}
+                  <div className="mt-3 flex justify-between font-semibold text-gray-800">
+                    <span>Total:</span>
                     <span>
-                      {name} <span className="text-gray-500">₹{data.price}</span>
+                      ₹{order.items.reduce((sum, entry) => sum + entry.item.price, 0)}
                     </span>
-                    <span className="font-medium text-gray-700">× {data.count}</span>
-                  </li>
-                ))}
-              </ul>
+                  </div>
+                </>
+              )}
+              <Button className="mt-4 w-full rounded-xl" onClick={() => setScreen("checkout")}>
+                Checkout
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
 
-              {/* Total Price */}
-              <div className="mt-3 flex justify-between font-semibold text-gray-800">
-                <span>Total:</span>
+      {screen === "checkout" && (
+        <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white">
+          <CardHeader>
+            <CardTitle className="text-xl font-bold flex items-center justify-center gap-2 text-green-600">
+              <Home /> Order Successful 🎉
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className="mt-4 border-t pt-3 text-left">
+              <p className="font-semibold text-gray-800 mb-2">Order Details:</p>
+              {Object.entries(getGroupedItems(order.items)).map(([rKey, group]) => (
+                <div key={rKey} className="mb-4">
+                  <p className="font-semibold text-gray-800">{group.restaurant.name}</p>
+                  <ul className="space-y-1">
+                    {Object.entries(group.items).map(([iKey, data]) => {
+                      const item = menuItems.find((m) => m.id === parseInt(iKey))!;
+                      return (
+                        <li
+                          key={iKey}
+                          className="flex justify-between text-sm border-b pb-1"
+                        >
+                          <span>
+                            {item.name} × {data.count}
+                          </span>
+                          <span className="font-medium text-gray-700">
+                            ₹{data.count * data.price}
+                          </span>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                </div>
+              ))}
+              <div className="mt-3 flex justify-between font-bold text-gray-900 text-base border-t pt-2">
+                <span>Total</span>
                 <span>
-                  ₹
-                  {order.items.reduce((sum, item) => sum + item.price, 0)}
+                  ₹{order.items.reduce((sum, entry) => sum + entry.item.price, 0)}
                 </span>
               </div>
-            </>
-          )}
-          <Button className="mt-4 w-full rounded-xl" onClick={() => setStep(5)}>
-            Checkout
-          </Button>
-        </CardContent>
-      </Card>
-    </div>
-  )}
+            </div>
 
+            {/* Token + Expected Time */}
+            <p className="mt-4 text-gray-700">
+              Your token:{" "}
+              <span className="font-mono font-bold text-indigo-600">
+                #{Math.floor(Math.random() * 1000)}
+              </span>
+            </p>
+            <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
 
-  {/* Step 5: Success */}
-  {step === 5 && (
-    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white">
-      <CardHeader>
-        <CardTitle className="text-xl font-bold flex items-center justify-center gap-2 text-green-600">
-          <Home /> Order Successful 🎉
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        {/* Restaurant Selected */}
-        <p className="mb-2 text-gray-700">
-          <span className="font-semibold">Restaurant:</span>{" "}
-          <span className="text-indigo-600">{order.restaurant?.name}</span>
-        </p>
-
-        {/* Order Items */}
-        <div className="mt-4 border-t pt-3 text-left">
-          <p className="font-semibold text-gray-800 mb-2">Order Details:</p>
-          <ul className="space-y-1">
-            {Object.entries(
-              order.items.reduce(
-                (
-                  acc: Record<string, { count: number; price: number }>,
-                  item
-                ) => {
-                  if (!acc[item.name]) {
-                    acc[item.name] = { count: 0, price: item.price };
-                  }
-                  acc[item.name].count += 1;
-                  return acc;
-                },
-                {}
-              )
-            ).map(([name, data], idx) => (
-              <li
-                key={idx}
-                className="flex justify-between text-sm border-b pb-1"
-              >
-                <span>
-                  {name} × {data.count}
-                </span>
-                <span className="font-medium text-gray-700">
-                  ₹{data.count * data.price}
-                </span>
-              </li>
-            ))}
-          </ul>
-
-          {/* Total Price */}
-          <div className="mt-3 flex justify-between font-bold text-gray-900 text-base border-t pt-2">
-            <span>Total</span>
-            <span>
-              ₹{order.items.reduce((sum, item) => sum + item.price, 0)}
-            </span>
-          </div>
-        </div>
-
-        {/* Token + Expected Time */}
-        <p className="mt-4 text-gray-700">
-          Your token:{" "}
-          <span className="font-mono font-bold text-indigo-600">
-            #{Math.floor(Math.random() * 1000)}
-          </span>
-        </p>
-        <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
-
-        {/* New Order Button */}
-        <Button
-          className="rounded-xl w-full"
-          onClick={() => {
-            setOrder({ type: "", contact: "", restaurant: null, items: [] });
-            setStep(1);
-          }}
-        >
-          Pay Now
-        </Button>
-      </CardContent>
-    </Card>
-  )}
-
+            {/* New Order Button */}
+            <Button
+              className="rounded-xl w-full"
+              onClick={() => {
+                setOrder({ type: "Takeaway", contact: "Guest", items: [] });
+                setCurrentOptions([]);
+                setScreen("main");
+              }}
+            >
+              Pay Now
+            </Button>
+          </CardContent>
+        </Card>
+      )}
 </div>
 
   );
