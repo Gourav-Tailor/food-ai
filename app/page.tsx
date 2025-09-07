@@ -351,147 +351,209 @@ export default function VoiceFoodOrderingApp() {
 
 
   return (
-    <div className="min-h-screen flex flex-col items-center justify-center bg-gray-50 p-6">
-      {/* Transcript Box */}
-      <Card className="w-full max-w-md mb-6 border shadow-md">
-        {/* <CardHeader>
-          <CardTitle className="text-sm text-gray-500">Voice Input</CardTitle>
-        </CardHeader> */}
+    <div className="min-h-screen flex flex-col items-center justify-center bg-gradient-to-b from-gray-50 to-gray-100 p-4 md:p-8">
+  {/* Transcript Box */}
+  <Card className="w-full max-w-md mb-6 border shadow-sm rounded-2xl bg-white">
+    <CardContent className="p-4">
+      <div className="space-y-1">
+        <p className="text-xs text-gray-500">You said:</p>
+        <p className="font-medium text-gray-800 text-sm truncate">
+          {transcript || "..."}
+        </p>
+      </div>
+    </CardContent>
+  </Card>
+
+  {/* Step 1: Choose type */}
+  {step === 1 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-2">
+          <Utensils className="h-5 w-5 text-indigo-500" />
+          Choose Order Type
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Button
+          className="w-full rounded-xl"
+          onClick={() => {
+            setOrder({ ...order, type: "Dine In" });
+            setStep(2);
+          }}
+        >
+          🍽️ Dine In
+        </Button>
+        <Button
+          variant="secondary"
+          className="w-full rounded-xl"
+          onClick={() => {
+            setOrder({ ...order, type: "Takeaway" });
+            setStep(2);
+          }}
+        >
+          🛍️ Takeaway
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Step 2: Contact details */}
+  {step === 2 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl bg-white text-center">
+      <CardHeader>
+        <CardTitle className="text-lg font-semibold flex items-center justify-center gap-2">
+          <Phone className="h-5 w-5 text-green-500" /> Contact Details
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <Input
+          placeholder="Enter contact number"
+          className="rounded-xl"
+          onBlur={(e) => {
+            setOrder({ ...order, contact: e.target.value });
+            setStep(3);
+          }}
+        />
+        <Button
+          variant="secondary"
+          className="w-full rounded-xl"
+          onClick={() => {
+            setOrder({ ...order, contact: "Guest" });
+            setStep(3);
+          }}
+        >
+          Continue as Guest
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+
+  {/* Step 3: Restaurant list */}
+  {step === 3 && (
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 w-full max-w-5xl">
+      {filteredRestaurants.map((r) => (
+        <Card
+          key={r.id}
+          className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition"
+          onClick={() => {
+            setOrder({ ...order, restaurant: r });
+            setStep(4);
+          }}
+        >
+          <CardContent className="p-3">
+            <img
+              src={r.image}
+              alt={r.name}
+              className="w-full h-32 object-cover rounded-lg"
+            />
+            <p className="font-semibold mt-2 flex items-center gap-2 text-gray-800">
+              <Store size={16} className="text-indigo-500" /> {r.name}
+            </p>
+            <p className="text-xs text-gray-500">{r.distance}</p>
+          </CardContent>
+        </Card>
+      ))}
+    </div>
+  )}
+
+  {/* Step 4: Menu */}
+  {step === 4 && (
+    <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
+      {/* Menu List */}
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-4 flex-1">
+        {order.restaurant &&
+          menuItems
+            .filter((item) => order.restaurant?.menu.includes(item.id))
+            .map((item) => (
+              <Card
+                key={item.id}
+                className="cursor-pointer border shadow-md rounded-2xl hover:shadow-lg transition"
+                onClick={() =>
+                  setOrder((prev) => ({
+                    ...prev,
+                    items: [...prev.items, item],
+                  }))
+                }
+              >
+                <CardContent className="p-3">
+                  <img
+                    src={item.image}
+                    alt={item.name}
+                    className="w-full h-28 object-cover rounded-lg"
+                  />
+                  <p className="font-semibold mt-2 text-sm text-gray-800">
+                    {item.name}
+                  </p>
+                </CardContent>
+              </Card>
+            ))}
+      </div>
+
+      {/* Cart */}
+      <Card className="w-full md:w-72 border shadow-md rounded-2xl">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 text-gray-800">
+            <ShoppingCart size={18} className="text-orange-500" /> Cart
+          </CardTitle>
+        </CardHeader>
         <CardContent>
-          <div className="space-y-2">
-            {/* Raw Speech */}
-            <div>
-              <p className="text-xs text-gray-500">You said:</p>
-              <p className="font-normal text-sm text-gray-800">
-                {transcript || "..."}
-              </p>
-            </div>
-          </div>
+          {order.items.length === 0 ? (
+            <p className="text-sm text-gray-500">No items added</p>
+          ) : (
+            <ul className="mt-2 space-y-1">
+              {Object.entries(
+                order.items.reduce((acc: Record<string, number>, item) => {
+                  acc[item.name] = (acc[item.name] || 0) + 1;
+                  return acc;
+                }, {})
+              ).map(([name, count], idx) => (
+                <li
+                  key={idx}
+                  className="text-sm flex justify-between border-b pb-1"
+                >
+                  <span>{name}</span>
+                  <span className="font-medium text-gray-700">× {count}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+          <Button className="mt-4 w-full rounded-xl" onClick={() => setStep(5)}>
+            Checkout
+          </Button>
         </CardContent>
       </Card>
-
-
-      {/* Step 1: Choose type */}
-      {step === 1 && (
-        <Card className="w-full max-w-md border shadow-md p-6 text-center">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
-              <Utensils /> Choose Order Type
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Button onClick={() => { setOrder({ ...order, type: "Dine In" }); setStep(2); }}>Dine In</Button>
-            <Button variant="secondary" onClick={() => { setOrder({ ...order, type: "Takeaway" }); setStep(2); }}>Takeaway</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 2: Contact details */}
-      {step === 2 && (
-        <Card className="w-full max-w-md border shadow-md p-6 text-center">
-          <CardHeader>
-            <CardTitle className="text-lg font-bold flex items-center justify-center gap-2">
-              <Phone /> Contact Details
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="flex flex-col gap-4">
-            <Input placeholder="Enter contact number" onBlur={(e) => { setOrder({ ...order, contact: e.target.value }); setStep(3); }} />
-            <Button variant="secondary" onClick={() => { setOrder({ ...order, contact: "Guest" }); setStep(3); }}>Continue as Guest</Button>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Step 3: Restaurant list */}
-      {step === 3 && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6 w-full max-w-5xl">
-          {filteredRestaurants.map((r) => (
-            <Card key={r.id} className="cursor-pointer border shadow-md" onClick={() => { setOrder({ ...order, restaurant: r }); setStep(4); }}>
-              <CardContent className="p-3">
-                <img src={r.image} alt={r.name} className="w-full h-32 object-cover rounded-lg" />
-                <p className="font-semibold mt-2 flex items-center gap-2"><Store size={16}/> {r.name}</p>
-                <p className="text-sm text-gray-500">{r.distance}</p>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      )}
-
-      {/* Step 4: Menu */}
-      {step === 4 && (
-        <div className="flex flex-col md:flex-row gap-6 w-full max-w-6xl">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 flex-1">
-            {order.restaurant &&
-              menuItems
-                .filter((item) => order.restaurant?.menu.includes(item.id)) // ✅ only items from restaurant menu
-                .map((item) => (
-                  <Card
-                    key={item.id}
-                    className="cursor-pointer border shadow-md"
-                    onClick={() =>
-                      setOrder((prev) => ({
-                        ...prev,
-                        items: [...prev.items, item],
-                      }))
-                    }
-                  >
-                    <CardContent className="p-3">
-                      <img
-                        src={item.image}
-                        alt={item.name}
-                        className="w-full h-32 object-cover rounded-lg"
-                      />
-                      <p className="font-semibold mt-2">{item.name}</p>
-                    </CardContent>
-                  </Card>
-                ))}
-          </div>
-          <Card className="w-72 border shadow-md">
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <ShoppingCart size={18}/> Cart
-              </CardTitle>
-            </CardHeader>
-            <CardContent>
-              {order.items.length === 0 ? (
-                <p className="text-sm text-gray-500">No items added</p>
-              ) : (
-                <ul className="mt-2 space-y-1">
-                  {Object.entries(
-                    order.items.reduce((acc: Record<string, number>, item) => {
-                      acc[item.name] = (acc[item.name] || 0) + 1;
-                      return acc;
-                    }, {})
-                  ).map(([name, count], idx) => (
-                    <li key={idx} className="text-sm flex justify-between">
-                      <span>{name}</span>
-                      <span className="font-medium text-gray-700"> x {count}</span>
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Button className="mt-4 w-full" onClick={() => setStep(5)}>
-                Checkout
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      )}
-
-      {/* Step 5: Success */}
-      {step === 5 && (
-        <Card className="w-full max-w-md border shadow-md text-center p-6">
-          <CardHeader>
-            <CardTitle className="text-xl font-bold flex items-center justify-center gap-2">
-              <Home /> Order Successful 🎉
-            </CardTitle>
-          </CardHeader>
-          <CardContent>
-            <p className="mb-2">Your token: <span className="font-mono">#{Math.floor(Math.random() * 1000)}</span></p>
-            <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
-            <Button onClick={() => { setOrder({ type: "", contact: "", restaurant: null, items: [] }); setStep(1); }}>New Order</Button>
-          </CardContent>
-        </Card>
-      )}
     </div>
+  )}
+
+  {/* Step 5: Success */}
+  {step === 5 && (
+    <Card className="w-full max-w-md border shadow-md rounded-2xl text-center bg-white">
+      <CardHeader>
+        <CardTitle className="text-xl font-bold flex items-center justify-center gap-2 text-green-600">
+          <Home /> Order Successful 🎉
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <p className="mb-2 text-gray-700">
+          Your token:{" "}
+          <span className="font-mono font-bold text-indigo-600">
+            #{Math.floor(Math.random() * 1000)}
+          </span>
+        </p>
+        <p className="text-gray-600 mb-4">Expected time: 20 mins</p>
+        <Button
+          className="rounded-xl"
+          onClick={() => {
+            setOrder({ type: "", contact: "", restaurant: null, items: [] });
+            setStep(1);
+          }}
+        >
+          New Order
+        </Button>
+      </CardContent>
+    </Card>
+  )}
+</div>
+
   );
 }
