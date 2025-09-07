@@ -86,70 +86,108 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY. No extra text, no explanations.
 
-                Rule: Look for intent to select order type.
-                - Output "dine in" if user mentions dining in, eating here, or similar.
-                - Output "takeaway" if user mentions take away, pickup, to go, or similar.
+                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
+                - Identify intent to select order type.
+                - Output { "command": "dinein" } for phrases like "dine in", "eat here", "eating in", or similar.
+                - Output { "command": "takeaway" } for phrases like "take away", "pickup", "to go", or similar.
 
-                If nothing matches, return { "command": "unknown" }.
+                Examples:
+                - "I'd like to dine in please" → { "command": "dinein" }
+                - "Take out" → { "command": "takeaway" }
 
-                ALWAYS output exactly one JSON object with a "command" field.
+                If no clear intent is detected, return { "command": "unknown" }.
+
+                ALWAYS return exactly one JSON object with a "command" field.
               `;
 
             case 2:
               return `
                 You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY.
+                Return JSON ONLY. No extra text, no explanations.
 
-                Rule: Look for contact info.
-                - Output "guest" if user says guest, anonymous, no number, or similar.
-                - Output "number is <digits>" if user provides a phone number (extract only digits).
+                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
+                - Extract contact information.
+                - Output { "command": "guest" } for phrases like "guest", "anonymous", "no number", or similar.
+                - Output { "command": "number is <digits>" } for a phone number, extracting only digits (e.g., "1234567890").
 
-                If nothing matches, return { "command": "unknown" }.
+                Examples:
+                - "I'm a guest" → { "command": "guest" }
+                - "My phone is five five five one two three four" → { "command": "number is 5551234" }
 
-                ALWAYS output exactly one JSON object with a "command" field.
+                If no contact information is detected, return { "command": "unknown" }.
+
+                ALWAYS return exactly one JSON object with a "command" field.
               `;
 
             case 3:
               return `
                 You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY.
+                Return JSON ONLY. No extra text, no explanations.
 
-                Rule: Look for restaurant selection.
-                - Output "restaurant <name>" where <name> is the closest match.
+                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
+                - Identify restaurant selection.
+                - Output { "command": "restaurant <name>" } where <name> is the closest matching restaurant name using fuzzy matching.
                 - Available restaurants: ${restaurants.map(r => r.name).join(", ")}.
+                - Available menu items: ${menuItems.map(m => m.name).join(", ")}.
 
-                If nothing matches, return { "command": "unknown" }.
+                Examples:
+                - "I want Rajasthani Thali" → { "command": "restaurant rajasthani thali" }
+                - "Pick the marwar one" → { "command": "restaurant marwar delight" }
+                - "Ker Sangri" → { "command": "Ker Sangri" }
+
+                If no match is found, return { "command": "unknown" }.
+
+                ALWAYS return exactly one JSON object with a "command" field.
               `;
 
             case 4:
               return `
                 You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY.
+                Return JSON ONLY. No extra text, no explanations.
 
-                Rule: Look for cart actions.
-                - "add <quantity> <item>" → default 1 if quantity not spoken
-                - "remove <quantity> <item>" → default 1 if quantity not spoken
-                - "checkout" for done/finish/pay
+                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
+                - Parse cart actions.
+                - For adding items: Output { "command": "add <quantity> <item>" } where <item> is the closest matching menu item (fuzzy match) and <quantity> defaults to 1 if not specified.
+                - For removing items: Output { "command": "remove <quantity> <item>" } where <item> is the closest matching menu item and <quantity> defaults to 1 if not specified.
+                - For checkout: Output { "command": "checkout" } for phrases like "done", "finish", "pay", or similar.
                 - Available menu items: ${menuItems.map(m => m.name).join(", ")}.
+                - If multiple items are mentioned (e.g., "add gulab jamun and dal baati"), return one JSON object per command, prioritizing the first valid item in this response, and process subsequent items in further responses.
 
-                If nothing matches, return { "command": "unknown" }.
+                Examples:
+                - "Add 3 gulab jamun" → { "command": "add 3 gulab jamun" }
+                - "Add gulab jamun" → { "command": "add 1 gulab jamun" }
+                - "Remove 2 dal baati" → { "command": "remove 2 dal baati churma" }
+                - "Remove namkeen" → { "command": "remove 1 namkeen sev" }
+                - "I'm done, checkout now" → { "command": "checkout" }
+                - "Add gulab jamun and dal baati" → { "command": "add 1 gulab jamun" } (first response)
+
+                If no valid action is detected, return { "command": "unknown" }.
+
+                ALWAYS return exactly one JSON object with a "command" field.
               `;
 
             case 5:
               return `
                 You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY.
+                Return JSON ONLY. No extra text, no explanations.
 
-                Rule: Look for reset.
-                - Output "new order" if user wants to start over, reset, or new.
+                Rules (normalize input to lower-case, ignore filler words like "um", "please", "I want"):
+                - Detect intent to reset the order.
+                - Output { "command": "neworder" } for phrases like "start over", "reset", "new order", or similar.
 
-                If nothing matches, return { "command": "unknown" }.
+                Examples:
+                - "Start a new order" → { "command": "new order" }
+
+                If no reset intent is detected, return { "command": "unknown" }.
+
+                ALWAYS return exactly one JSON object with a "command" field.
               `;
 
             default:
               return `
                 You are a strict command parser for a voice-based food ordering assistant.
-                Return JSON ONLY. Output { "command": "unknown" } always.
+                Return JSON ONLY. No extra text, no explanations.
+                Output { "command": "unknown" } for all inputs.
               `;
           }
         };
