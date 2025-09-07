@@ -86,7 +86,7 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY. No extra text, no explanations.
 
-                Step 1: Look for intent to select order type.
+                Rule: Look for intent to select order type.
                 - Output "dine in" if user mentions dining in, eating here, or similar.
                 - Output "takeaway" if user mentions take away, pickup, to go, or similar.
 
@@ -100,7 +100,7 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY.
 
-                Step 2: Look for contact info.
+                Rule: Look for contact info.
                 - Output "guest" if user says guest, anonymous, no number, or similar.
                 - Output "number is <digits>" if user provides a phone number (extract only digits).
 
@@ -114,7 +114,7 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY.
 
-                Step 3: Look for restaurant selection.
+                Rule: Look for restaurant selection.
                 - Output "restaurant <name>" where <name> is the closest match.
                 - Available restaurants: ${restaurants.map(r => r.name).join(", ")}.
 
@@ -126,7 +126,7 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY.
 
-                Step 4: Look for cart actions.
+                Rule: Look for cart actions.
                 - "add <quantity> <item>" → default 1 if quantity not spoken
                 - "remove <quantity> <item>" → default 1 if quantity not spoken
                 - "checkout" for done/finish/pay
@@ -140,7 +140,7 @@ export default function VoiceFoodOrderingApp() {
                 You are a strict command parser for a voice-based food ordering assistant.
                 Return JSON ONLY.
 
-                Step 5: Look for reset.
+                Rule: Look for reset.
                 - Output "new order" if user wants to start over, reset, or new.
 
                 If nothing matches, return { "command": "unknown" }.
@@ -168,7 +168,7 @@ export default function VoiceFoodOrderingApp() {
               },
               {
                 role: "user",
-                content: `user said in step-${step}: ${text}`,
+                content: `${text}`,
               },
             ],
             response_format: { type: "json_object" },
